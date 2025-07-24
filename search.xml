@@ -274,7 +274,7 @@ shellcode变型这是最后一种类型的shellcode，和mrctf2020_shellcode类�
 ]]></content>
   </entry>
   <entry>
-    <title>01 shellcode</title>
+    <title>01 ShellCode</title>
     <url>//docx/01%20ShellCode/</url>
     <content><![CDATA[什么是shellcodeshellcode通常是软件漏洞利用过程中使用的一小段机器代码
 作用：
@@ -527,10 +527,344 @@ shellcode变型这是最后一种类型的shellcode，和mrctf2020_shellcode类�
 
 ]]></content>
       <categories>
-        <category>pwn攻略-主线</category>
+        <category>PWN不出来</category>
       </categories>
       <tags>
-        <tag>PWN不出来</tag>
+        <tag>PWN攻略-主线</tag>
+        <tag>shellcode</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>02 栈溢出介绍及初级栈溢出</title>
+    <url>//docx/02%20%E6%A0%88%E6%BA%A2%E5%87%BA%E4%BB%8B%E7%BB%8D%E5%8F%8A%E5%88%9D%E7%BA%A7%E6%A0%88%E6%BA%A2%E5%87%BA/</url>
+    <content><![CDATA[栈溢出基础C语言函数调用栈函数调用栈函数调用栈是指程序运行时侯，内存的一段连续的区域。用来保护函数运行时候的状态信息（函数参数，局部变量等）。
+称之为“栈”的原因是因为发生函数调用时，调用函数_（caller）_的状态被保存在栈内，被调用函数（callee）的状态压入调用栈的栈顶。
+在函数调用结束的时候，栈顶的被调用函数（callee）状态被弹出，栈顶恢复到调用函数（caller）的状态。
+调用函数栈在内存中从高地址向低地址生长，所以栈顶对应内存地址在压栈时变小，退栈时候变大。
+
+比如下面这个代码：
+#include&lt;stdio.h&gt;int main()&#123;    chat str[]=&quot;hello,world&quot;;    printf(&quot;%s&quot;,str);    return 0;&#125;
+
+其中，str被保存在main的函数栈区中，当我调用printf的时候，str便会放入到printf函数的栈区中。此时printf就是被调用函数callee，而caller就是调用函数main。
+栈帧结构就像我上面说的，每次使用某个函数的时候就会创造相对于的“调用函数的状态”或者“被调用函数的状态”。而这个栈的结构是怎么样的呢：
+
+简单介绍一下，这边我们的从_局部变量(Local variables)_到_栈帧指针(stack frame pointer)_的范围内都是我们的被调用寄存器，而返回地址上面（向高地址）的参数则是前一个函数的参数，在前面是上一个函数的栈帧指针。所以一般而言，我们只要看_局部变量(Local variables)_到_栈帧指针(stack frame pointer)_的范围就行了。
+然后这张图是完全按照高地址到低地址（上到下）来呈现的。
+函数状态寄存器要表示一个函数此时此刻栈帧中的状态，主要涉及到三个寄存器：esp，ebp和eip。（在64位架构下这些指针应该叫做rsp,rbp和rip)（下边大部分时候都拿32位的称呼去做操作演示）
+**EIP RIP：**全称叫做_指令指针（Instruction Pointer, IP）_，它用于存储吓一跳将被执行的指令在代码段中的偏移地址。CPU通过EIP寄存器来确定从内存中的哪一个位置来读取下一条指令。当我运行printf(“Helloworld”)的时候，eip会先指向指令mov rdi, [Helloworld字符串地址]，然后再指向call printf这个指令。这两条指令构成了在某一函数内输出Helloworld的方式。
+**ESP RSP：**全称叫做_栈指针（Extended Stack Pointer，SP，又叫做栈顶指针）_，栈遵循先进后出原则。ESP指针一般指向栈顶，当有值被压入栈的时候，栈顶指针就会根据被压入栈中参数的长短做偏移形成存有新值的ESP指针。简而言之，不管栈如何变化，ESP寄存器一般而言都会存有当前栈顶地址的状态。
+EBP RBP：全称叫做_基址指针（Base Pointer，BP，又叫做栈底指针），_当栈被创建的时候，EBP就指向栈的最低端，此时EBP==ESP，随后当栈发生变化（有数据压入或者弹出），ESP在变化的时候，EBP还是存有栈底的地址，不会变化。简而言之，不管栈如何变化，EBP寄存器一般而言都会存有当前函数栈底地址的状态。
+函数栈形成与状态首先将被调用函数callee的参数按照逆序依次压入栈内。如果callee不需要参数，则没有这一步骤。这些参数仍会保存在caller的函数状态内。之后压入栈内的数据就会作为callee的函数状态保存，如下图所示：
+
+将被调用函数(Callee)的参数压入栈中1
+然后将调用函数（caller）进行调用之后的下一条指令地址作为返回地址压入返回地址压入栈内。这样caller的eip信息就得以保存了，如下图所示：
+
+将被调用函数(Callee)的参数压入栈中2
+再将当前的ebp寄存器的值（也就是caller的基地址）压入栈内，并将ebp寄存器的值更新位当前栈顶的地址。这样调用函数caller的ebp信息得以保存，同时，ebp被更新为callee的基地址，如下图所示：
+
+将caller的ebp压入栈内，并将当前栈顶地址传入ebp中
+在压栈的过程中，esp的寄存器的值不断变小（对应栈从内存高地址向低地址生长）。压入栈内的数据包括调用参数、返回地址、调用函数的及地址、局部变量这些参数的状态。其中调用参数以外的数据共同构成了被调用函数callee的状态。
+在发生调用时候，程序还会将callee的指令地址存到eip寄存器内，这样程序就可以依次执行callee的指令了。
+最后将被调用函数(callee)的局部变量压入栈内，如下图所示：
+
+将caller的ebp压入栈内，并将当前栈顶地址传入ebp中
+看过了函数调用发生时的情况，就不难理解函数调用结束时候的变化。变化的和性就是丢弃callee的状态，将栈顶恢复成caller的状态。首先callee的局部变量会先从栈内直接弹出，栈顶会指向callee的基地址。
+然后将基地址的内储存调用函数caller的基地址从栈内弹出，并且存到ebp寄存器中，这样caller的ebp信息得以恢复。此时栈顶会指向返回地址。
+最后将返回地址pop到eip中，随后esp再向上一格，回到caller的栈顶位置，ebp保持不变。如下图所示：
+
+栈溢出（stack overflow）栈溢出原理讲完上面的基础知识，我们可以理解：当函数正在执行内部指令的过程中，我们无法拿到程序的控制权，只有在发生函数调用或者结束函数调用的时候，程序的控制权会在函数状态之间发生跳转，这时我们可以通过修改函数状态（修改返回地址）来实现攻击。而控制程序执行指令最关键的寄存器就是eip，所以我们的目标就是让rip载入攻击指令的地址。 
+:::info缓冲区溢出（Buffer overflow）
+编写程序的时候没有考虑到或者错误的控制用户输入的长度，本质就是向定长的缓冲区中写入了超长的数据，造成超出的数据覆写了合法内存区域。
+栈溢出（Stack overflow）：最常见、漏洞比例最高、危害最大的二进制漏洞。在CTF PWN中往往是漏洞利用的基础。
+堆溢出（Heap overflow）：关系到堆管理器系统，比较复杂，利用花样多。CTF PWN中的常见题型
+Data段溢出：比如.bss段，修改关键变量，比较少见。攻击效果依赖于Data段上存放了何种控制数据。
+:::
+栈溢出的基本利用如果说有这么一个函数（32位）：
+int overflow()&#123;    char buf[8];    read(0, buf, 16);    return 0;&#125;
+
+当我调用这个函数的时候，函数将初始化esp和ebp寄存器，且将eip指针指向这个代码中。而下面这张图的左边就是overflow的栈帧视图，右边则为我输入AAAABBBBCCCCDDDD之后栈帧中实际的值存储情况。
+
+我们会发现当我们输入这么多东西之后，return address就被篡改成了’DDDD’所表示的地址，也就是0x44444444。而此时此刻也会出现一个问题：那就程序中没有0x44444444这个地址。
+所以如果我们一旦把DDDD这一块的内容改成某个具体的地址化，实际上就会跳转到这个地址，并且运行这个地址里面的内容了。也就是——篡改栈帧上的返回地址，为程序中已有的函数。
+学完上面的内容，我们可以配合一套例题来食用：overflow_ez_32
+Canary_pie绕过canary机制canary原理canary是一个用来防护栈溢出的保护机制。其原理是在一个函数的入口处，先从fs&#x2F;gs寄存器中取出一个四字节或者八字节（取决于系统架构是32还是64）的值存到栈上去。当函数结束时会检查这个栈上的值是否和一开始存进去的值一样。程序每次运行的时候，canary的值都会不一样。对于我们而言，canary的值几乎是一个随机值。我们无法知道值是多少。
+像我们上面举例的例子，再有canary的情况下就会变成这样：
+
+如果像这样，我们将Canary篡改之后，就会触发`__Stack_chk_fail`这个函数，并且会报错。
+
+不过就像上面所说，如果我们知道canary的值是多少，那么我们便可以在栈溢出的时候保留canary的值，且就可以成功溢出了。
+:::info说起来我也是无聊，当时学canary的时候，很好奇这个翻译过来叫做“金丝雀”的东西为什么会是一种保护机制。
+这个名字非常有趣，他和我们的近代工业史有关——19世纪时候的煤矿工人下井挖矿的时候，会带着一只金丝雀。矿井里面会有一些无色无味的有毒气体，像是一氧化碳，人类要吸入一定剂量才会出现问题，而且那个时候已经逃不掉了。不过金丝雀这种小动物容易出现明显反应。矿工们通过观察金丝雀的状态，就能提前察觉危险，及时撤离。
+还有一种说法是（我觉得两种都有），矿工下矿前会把金丝雀先拿绳子下放到矿井中，过一会儿再拿上来查看反应。这个就很像栈溢出的时候canary先放入栈中试探，等到函数运行结束的时候再拿上来对比值一样了。
+canary保护顾名思义，和金丝雀一样脆弱。每当一次canary绕过失败的时候，你可以理解为计算机里面死了一只电子金丝雀（难崩）。
+:::
+canary绕过方法如此，其实绕过canary的最重要的一步就是如何获取canary的值，canary绕过大概有以下几种绕过方式：
+**1、格式化字符串绕过canary：**通过格式化字符串读取canary的值
+**2、canary爆破（针对有fork的程序）：**我在pwn及计算机原理基础知识这里说明了fork函数的具体作用。fork函数相当于自我复制，每一次复制出来的程序，内存布局都是一样的，当然canary的值也是一样的。所以可以通过这个机制堆canary逐位爆破，如果程序崩溃了就说明这一位不对。如果程序可以正常那就接着跑下一位，直到跑出正确的canary。
+3、Stack samashing（故意触发**canary_spp leak**）
+**4、劫持__stack_chk_fail：**修改got表中__stack_chk_fail函数的地址，在栈溢出后执行该函数，不过因为我们修改了__stack_chk_fail函数所指向的地址，程序运行__stack_chk_fail的时候就会跳转到我们当时修改的地址。
+格式化字符串绕过canary（我懒得画图了，这一块我就用Excel来画图演示，会比较方便）
+有关格式化字符串的介绍可以去看暗线中的：01 格式化字符串，稍微学一点即可，现在全学完学不明白。
+假设有一个%s这样的格式化字符串，如果我们把输入的内容和canary连在一起，那么在用%s这种格式化字符串输出的时候就会将canary一起打印出来。
+需要注意的是，canary的最后一位一定是’\0’，用于放置连带输出，所以我们改的时候，要把canary的最后一位也改了（其实理解成“最前面一位是’\0’”会比较合适，因为这里的，所谓“最后一位”实际上是小端序）。
+
+例题：
+PIE机制原理PIE技术是一个针对代码段（.text）、数据段（.data）、未初始化全局变量段（.bss）等固定地址的一个防护技术，如果程序开启了PIE保护，那么在每次加载程序时都会变换加载地址，从而不能通过ROPgadget等一些工具来帮助解题。
+在一个开启PIE保护的程序中，所有代码段的地址都只有最后三个数字是已知的：
+
+这些数字分别是这一行数据相对于基地址的偏移量。
+还有一点需要强调的是，程序的加载地址一般都是以内存页为单位的，所以程序的基地址的最后三个数字一定是0，也就是说我们看到的这些所谓的**“偏移量”就是内存中实际地址的最后三位数**。
+所以，虽然我不知道完整的地址，但我知道最后的三个数，那么我就可以利用栈上已有的地址，只修改他们的最后两个字节（最后四位数）即可。
+所以对于绕过PIE保护的核心思想就是**partial writing（部分地址改写）**
+例题：
+所以这种方法，从某种意义上按照道理每次爆破都只有1&#x2F;16的概率能进。
+还有泄露基地址。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-主线</tag>
+        <tag>shellcode</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pwn及计算机原理基础知识</title>
+    <url>//docx/pwn%E5%8F%8A%E8%AE%A1%E7%AE%97%E6%9C%BA%E5%8E%9F%E7%90%86%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/</url>
+    <content><![CDATA[
+title: pwn及计算机原理基础知识tags:    - PWN攻略-前提    - 计算机原理categories:    - PWN不出来
+date: 2025-07-24 23:29:06
+title: pwn及计算机原理基础知识tags:    - PWN攻略-前提    - 计算机原理categories:    - PWN不出来
+date: 2025-07-24 23:28:55
+title: pwn及计算机原理基础知识tags:    - PWN攻略-前提    - 计算机原理categories:    - PWN不出来
+date: 2025-07-24 23:24:23PWN是什么PWN是一个俗语，每次攻破某个服务或者系统就是“pwn进去了”，也就是：
+破解、利用成功（二进制漏洞） 
+攻破（设备、服务器）
+控制（设备、服务器）
+流程如下：
+Exploit：用于攻击的脚本和方案 
+Payload：攻击载荷，也就是构造的恶意数据 
+Shellcode：调用攻击目标shell的代码
+二进制基础C语言编译流程c&#x2F;c++在整个世界里面就和超级搅屎棍一样，一方面因为他真的很优秀，一方面因为时代局限性，导致有很多含有漏洞的程序在世界各处到处都有。
+当我拥有一个c语言程序，例如：
+#include&lt;stdio.h&gt;int main()&#123;    puts(&quot;Helloworld&quot;);    return 0;&#125;
+
+我们对他进行编译：
+gcc helloworld.c
+
+就可以得到一个二进制程序a.out
+
+a.out的内容如下：
+@ @@@���uu   ���-�=�=X`�-�=�=�8880hhh��S�td8880P�td   44Q�tdR�td�-�=�=HH/lib64/ld-linux-x86-64.so.2 GNU���GNU          ����c�e���w��U+``~���FDO&#123;&quot;type&quot;:&quot;deb&quot;,&quot;os&quot;:&quot;ubuntu&quot;,&quot;name&quot;:&quot;glibc&quot;,&quot;version&quot;:&quot;2.40-1ubuntu3.1&quot;,&quot;architecture&quot;:&quot;amd64&quot;&#125;GNU��e�mH d s &quot;puts__libc_start_main__cxa_finalizelibc.so.6GLIBC_2.2.5GLIBC_2.34_ITM_deregisterTMCloneTable__gmon_start___ITM_registerTMCloneTable&#x27;u�i        1���=�@�?�?�?�?�?�?��H�H��/H��t��H���5�/�%�/@��h�����f����%�/fD���%v/fD��1�I��^H��H���PTE1�1�H�=��S/�f.�H�=y/H�r/H9�tH�6/H��t        �����H�=I/H�5B/H)�H��H��?H��H�H��tH�/H����fD�����=/u+UH�=�.H��t                                                                               H�=�.�����d�����.]������w�����UH��H��H��������]���H�H��helloworld4���h0����@����P���P9����zRx                                                                        ����&amp;D$4���� FJ                                                                                       �?�9*3$&quot;\���Ut�����q���E�C@&#x27;h������o �H� �?��  ������o����o���o~���o�=@GCC: (Ubuntu 14.2.0-4ubuntu2) 14.2.0��        � ��� �3IU�=|@��=������� ��Scrt1.o__abi_tagcrtstuff.cderegister_tm_clones__do_global_dtors_auxcompleted.0__do_global_dtors_aux_fini_array_entryframe_dummy__frame_dummy_init_array_entryhelloworld.c__FRAME_END___DYNAMIC__GNU_EH_FRAME_HDR_GLOBAL_OFFSET_TABLE___libc_start_main@GLIBC_2.34_ITM_deregisterTMCloneTableputs@GLIBC_2.2.5_edata_fini__data_start__gmon_start____dso_handle_IO_stdin_used_end__bss_startmain__TMC_END___ITM_registerTMCloneTable__cxa_finalize@GLIBC_2.2.5_init.symtab.strtab.shstrtab.interp.note.gnu.property.note.gnu.build-id.note.package.note.ABI-tag.gnu.hash.dynsym.dynstr.gnu.version.gnu.version_r.rela.dyn.rela.plt.init.plt.got.plt.sec.text.fini.rodata.eh_frame_hdr.eh_frame.init_array.fini_array.dynamic.data.bss.comment#886hh$I��pW�� e���o  o�  �  4�H H ����=�-                          Hw������o~~����o�����B��   �@@�PP�``�hh                �=���?�@@00%80` �3�x5(
+
+我们可以从中看到一些看得懂的和大量看不懂的内容，其中绝大部分都是无法查看的二进制数据（机器码），而那些可以看出来的二进制数据，可以看到许多信息。这到底是什么文件呢，我们可以file一下。
+
+我们可以发现他是一个ELF（linux下可执行文件格式），64位的文件。
+
+如图所示，C语言到可执行程序的流程也就是_编译(compilier)，汇编(assembler)，和链接（linker)_
+
+可执行文件什么是可执行文件  广义上，可执行文件就是可以执行的文件，比如说python文件在python环境下就可以直接执行（因为他是一个脚本）。
+  狭义上，可执行文件必须是一个经历过编译，汇编和链接后得到的二进制文件，并且在环境合适的情况下可以直接打开运行。也就是说CPU可以直接认识，比如.out.exe.dll.so文件
+  所谓的二进制漏洞，都是在狭义上的程序中的漏洞。
+可执行文件的分类Windows为**PE（portable Executable）**
+
+可执行程序：.exe 
+动态链接库：.dll 
+静态链接库：.lib
+Linux为**ELF（Executable and Linkable Format）**
+
+可执行程序：.out 
+动态链接库：.so 
+静态链接库：.a
+ELF文件、内存加载和虚拟内存ELF文件结构  段视图（Segment View）：用于进程在内存区域中读、写、执行（rwx）权限划分
+  节视图（Section View）：一个ELF文件编译链接时候，在磁盘上存储时的文件结构组织
+  一个段可包含多个节，节是段的细分单元。(不准确，映射关系中，进入内存后看起来段是高于节的）
+   不过大部分时候，不是严格区分成两个部分的，而是要根据不同的需求做不同的分析的。
+
+  比如说在程序从普通存储在硬盘状态到内存中运行的状态，就要从一种段视图的角度转移到节视图。如图所示，一个存储在Disk的程序变为进程进入Memory的时候，其中_**可读可写的.data.bss.got.plt段 **_就变成了Memory中的 Data节 ，很显然，Code节也是一样的由多个段组成的。而程序运行后又产生了新的节，例如stack（栈）和heap（堆）部分…
+虚拟内存  程序在调试的时候需要查看内存里面的内容，但是很可惜真实的内存因为一些机制难以查看。
+  在硬件层面，cpu和memory之间互相沟通没有问题，但是作为程序员是没有办法和硬件沟通的，于是通过OS，OS将物理内存（memory）给抽象出来。
+  OS通过软件机制将物理内存、外存（硬盘）等资源整合后，向程序员呈现的 “逻辑内存”。
+地址空间的隔离与映射_**虚拟内存用户空间每个进程各一份，**_每个程序各自占用独立的空间，例如在32位系统中，默认会划分给2^32byte，也就是4GB空间的大小。
+
+将CPU中的内存管理单元（MMU）和OS维护的页表（Page Table）实现映射。
+
+  因为所有的数据都需要内核，因此_虚拟内存内核空间所有进程共享一份_
+  最后，虚拟内存mmap段中的动态链接库（glibc）仅在物理内存中装载一份。虽然在每个程序的虚拟内存中都存在一份。
+内存空间
+如图所示，32位和64位的系统分别创造出来的空间大小各不相同。依次介绍一下分出来的各个部分分别是干嘛的。
+
+首先是Kernel Space，就是映射出来的内核空间。
+
+stack和heap都是动态存储各种数据的地方。
+
+下面都是静态存储区。
+
+RW段（可读可写，一般是.bss.data等) 
+ReadOnly段（只读，例如.init_array、.fini_array等） 
+RE段（可读可执行，一般是.init、.rodata、.text等)
+Reserved是保留部分。
+
+段（segment）与节（section）概述1. 代码段（Text segment）功能：存储代码与只读数据(ReadOnly)
+
+包含节：
+
+  `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.text&lt;/font&gt;` 节（核心代码存储） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.rodata&lt;/font&gt;` 节（只读常量，如字符串字面量 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.hash&lt;/font&gt;` 节（符号哈希表，辅助符号查找 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.dynsym&lt;/font&gt;` 节（动态链接符号表 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.dynstr&lt;/font&gt;` 节（动态链接符号名字符串 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.plt&lt;/font&gt;` 节（过程链接表，用于延迟绑定 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.rel.got&lt;/font&gt;` 节（全局偏移表重定位信息 ）
+
+2. 数据段（Data segment）功能：存储可读可写数据(Read Write)
+
+包含节：
+
+  `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.data&lt;/font&gt;` 节（已初始化全局 / 静态变量 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.dynamic&lt;/font&gt;` 节（动态链接相关信息，如依赖库 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.got&lt;/font&gt;` 节（全局偏移表，加速地址访问 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.got.plt&lt;/font&gt;` 节（针对 plt 的全局偏移表 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.bss&lt;/font&gt;` 节（未初始化 / 初始化为 0 的全局 / 静态变量，运行时分配内存 ）
+
+3. 栈段（Stack segment）通常用于函数调用上下文、局部变量存储，由系统自动管理栈帧分配与释放
+
+程序数据如何在内存中组织
+一开始，有两个全局变量。其中glb存放在内存中的.Bss节部分（因为他没有被初始化）。Bss的其中之一的作用就是存储未初始化的变量。在运行时候分配内存（静态变量也是如此）。
+而在char* str中，其中str放在了Data节部分，也就是已经被初始化的变量存储部分。然后”Helloworld”因为是一个字符串，一个只读数据，所以就被放在了Text段中（一般是Text段里面的.rodata节）
+然后所有的函数存放在了Text段的text节里面，例如sum、main等等。在程序运行中，所有在函数中的变量（函数的内存开销）都被放在了Stack，也就是栈里面。
+在程序中有void* ptr&#x3D;malloc(0x100);其中这个0x100的空间就通过malloc申请到Heap里面了。如此这般，read函数读取到的”deadbeef”就被读取到Heap里面存储着了，也就是堆里。
+大端序和小端序小端序 低地址存放数据低位，高地址存放数据高位。主流格式
+大端序 低地址存放数据高位，高地址存放数据低位
+
+比如说我现在
+char* str = &quot;ABC&quot;;
+
+就可以得到【ABC\0】这个字符串，分别的ASCII码的十六进制是41,42,43,00,合在一起数据就变成了”00434241”。
+其中数据最低位为41，数据最高位为00。数据低位放在内存低位，数据高位内存高位（如小端序解释图所示）。
+程序的装载与进程的执行
+越靠近CPU的存储器，速度越快，价格越高昂，而且存储空间越小。而Register（寄存器）就是一个速度极快的存储器。
+寄存器
+寄存器一共就四个任务：
+第一是把数据存到寄存器中 
+第二是把寄存器中的东西存放到另一个寄存器上 
+第三是把内存中地址上数据获取后存放到寄存器中 
+第四是把寄存器的数据存到地址上去
+一、amd64 寄存器结构（以 RAX 为例的分级访问）amd64 架构中，&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;RAX&lt;/font&gt; 是 8 字节（64 位）通用寄存器，支持向下兼容的分级访问：
+
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;rax&lt;/font&gt;：完整 8 字节（64 位）寄存器，可存 64 位数据。
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;eax&lt;/font&gt;：低 4 字节（32 位），兼容 32 位程序，存 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;rax&lt;/font&gt; 的低 32 位数据。
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt;：低 2 字节（16 位），兼容 16 位程序，存 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;rax&lt;/font&gt; 的低 16 位数据。
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ah&lt;/font&gt;：&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt; 的高 1 字节（8 位），存 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt; 的高 8 位。
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;al&lt;/font&gt;：&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt; 的低 1 字节（8 位），存 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt; 的低 8 位。
+
+这种设计让程序能灵活处理不同位数的数据（64&#x2F;32&#x2F;16&#x2F;8 位），适配旧代码兼容需求。
+二、部分寄存器的功能
+RIP（程序计数器指针寄存器）（Program Counter）
+存当前下一条指令的偏移地址。
+
+
+RSP（栈指针寄存器）
+存当前栈帧的栈顶偏移地址，栈是 “后进先出” 的内存区域（如函数调用时局部变量、返回地址的存储 ），&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;RSP&lt;/font&gt; 随栈操作（&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;push&lt;/font&gt;&#x2F;&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;pop&lt;/font&gt; ）动态变化，始终指向栈顶位置。
+
+
+RBP（基址指针寄存器）
+存当前栈帧的栈底偏移地址，用于定位栈内数据（如函数局部变量相对于栈底的偏移 ），辅助访问栈帧中的内容，常配合 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;RSP&lt;/font&gt; 管理函数调用栈。
+
+
+RAX（通用寄存器）
+作为通用寄存器，可临时存各种数据；特殊功能是存放函数返回值（如 C 语言中 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;int&lt;/font&gt;&#x2F;&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;long long&lt;/font&gt; 等类型的返回值，会通过 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;RAX&lt;/font&gt; 传递 ）。
+
+
+
+静态链接的程序的执行过程
+fork函数当我们开始运行程序的时候，随后运行fork()函数
+fork()在这张图的意思大概如下：我运行一个helloworld程序，需要用到一些内核kernel的东西。于是乎在我运行，也就是 $ ./binary的时候，shell使用fork函数复制自己，他会在父进程（也就是我的系统）中分裂出一个子进程（也就是./binary程序）。然后当子进程需要用到和修改父进程（kernel中的内容）的时候，fork函数就会复制一份数据（在初始阶段共享所有的数据（全局、 栈区、 堆区、 代码）)到子进程中。所以在程序运行的时候，fork函数就是做这个的。
+再单独解释一下fork函数，它的作用是从主进程中分裂出一个进程，他们之间是父子进程的关系。然后fork函数会返回一个int类型，这个int类型就是进程号。
+fork调用的一个奇妙之处就是它仅仅被调用一次，却能够返回两次，它可能有三种不同的返回值：
+  在父进程中，fork返回新创建子进程的进程ID； 在子进程中，fork返回0； 如果出现错误，fork返回一个负值；
+因此我们可以通过fork返回的值来判断当前进程是子进程还是父进程。（注： fork 调用生成的新进程与其父进程谁先执行不一定，哪个进程先执行要看系统的进程调度策略）
+execve函数当然上述过程只是创建了一个进程，而进程中没有需要运行的内容，execve函数就是用来把./binary里面的内容（也就是需要运行的程序本身）放到子进程中的
+子进程调用 execve(&quot;./binary&quot;, argv[], envp[]) ，目的是用新程序（./binary ）替换当前子进程的内存空间：
+argv[]：传递程序运行参数（比如 ./binary arg1 arg2 里的参数 ）。 envp[]：传递环境变量（比如 PATH``HOME 等 ）。
+内核态切换与处理execve() 会触发系统调用，进入内核态（Kernel mode）：
+  先调用 sys_execve() （内核层的系统调用处理函数 ），再调用 do_execve() 。
+  do_execve() 会执行 search_binary_handler() ，作用是查找能处理该可执行文件的加载器（因为是静态链接的 ELF 文件，会找到 ELF 加载器 ）。
+  找到后调用 load_elf_binary() ，负责加载 ELF 文件到内存（解析文件头、分配内存、加载代码段 &#x2F; 数据段等 ）。
+sys_execve()和do_execve()简单来说，&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;sys_execve()&lt;/font&gt; 是系统调用处理函数，是用户态到内核态的接口之一。在 Linux 内核里，每个系统调用都有对应的处理函数，&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;sys_execve()&lt;/font&gt; 就是处理 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;execve()&lt;/font&gt; 系统调用的函数，对用户请求进行初步审核和预处理；而 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;do_execve()&lt;/font&gt; 则是是内核中真正执行程序加载和执行关键操作的函数，属于 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;sys_execve()&lt;/font&gt; 处理流程的下一级，真正去操办程序加载运行的各项事务。
+它们共同协作，完成从用户请求运行程序到程序成功加载运行的整个过程。
+search_binary_handler()和load_elf_binary()  &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;search_binary_handler()&lt;/font&gt;：负责识别文件格式，通过遍历格式处理器链表找到能处理当前文件的加载器。
+  &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;load_elf_binary()&lt;/font&gt;：负责 ELF 文件的具体加载，包括内存映射、环境设置、动态链接等，最终让程序得以执行。也就是让程序可以静态调试的主要函数。
+_start和main()  没什么好说，就是启动后让用户可以看到程序的最后一步。
+动态连接的程序的执行过程
+相比于静态储存，多了一个ld.so和__libc_start_main()和_init。这些是额外处理共享库加载、初始化和运行时支持。
+分别依赖库是ld.so解决函数库地址映射关系之类的，加载是__libc_start_main()把这些东西放到，初始化是_init。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-前提</tag>
+        <tag>计算机原理</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pwn基础配置</title>
+    <url>//docx/pwn%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE/</url>
+    <content><![CDATA[
+title: pwn基础配置tags:    - PWN攻略-前提    - 计算机原理categories:    - PWN不出来
+date: 2025-07-24 23:29:06
+title: pwn基础配置tags:    - PWN攻略-前提    - 计算机原理categories:    - PWN不出来
+date: 2025-07-24 23:28:55
+title: pwn基础配置tags:    - PWN攻略-前提    - 计算机原理categories:    - PWN不出来
+date: 2025-07-24 23:24:24ubuntu系统和windows系统
+做pwn前需要准备的工具：
+一些虚拟机配置鼠标拖拽控制
+这个服务打开即可
+安装软件linux需要在前面加sudo哈
+网络环境配置默认主机有clash或其他vpn工具。
+
+允许局域网和端口要记住并且打开，系统代理在你需要打开vpn的时候打开即可。
+虚拟机调为NAT连接模式。
+
+在ubuntu的settings中proxy（代理）调整为manual（手动），把http和https的proxy改成相应的URL和Port
+
+端口号就和前面的一样，URL就是vmware给虚拟机的地址，查看方式如图所示： 
+
+基础环境配置python3#首先进入root模式sudo apt updatesudo apt install python3sudo apt install python3-pipalias python=&#x27;/usr/bin/python3&#x27;
+
+一般只需要python3，如果需要python2的话可以看：
+python2环境
+按照这样安装一轮应该就可以了，不要乱删东西。如果不想安装pip可以试下面的第二种办法安装pwntools
+Pwntoolspython库
+sudo pip3 install pwntools -i https://pypi.tuna.tsinghua.edu.cn/simple#或者sudo apt install python3-pwntools
+
+Wine用来在linux环境下使用windows程序的…一般而言不需要
+apt-get install wine
+
+Gdb &amp; pwndbg调试程序
+apt install gdbapt install gitgit clone https://github.com/pwndbg/pwndbgcd pwndbg./setup.shvim ~/.gdbinit#进入到vim之后，输入人source [pwndbg的位置]/gdbinit.py#比如:source /home/kanyo/pwndbg/gdbinit.py
+
+One_gadget一种工具，从libc中直接找到一个构造ROP的地址。
+apt install rubyapt install gemgem install one_gadgetpip3 install --break-system-packages ropper #我建议用这个
+
+因为ROPgadget需要用grep管道指令搜索，有点麻烦
+可以直接用ropper来查询
+ropper --file [filename] --search &#x27;[words]&#x27;
+
+LibcSearcher#libcSearcher有时候不会准，这里提供一个网站：#http://libc.blukat.me#下面是libc安装git clone https://github.com/lieanu/LibcSearcher.gitcd LibcSearcherpython setup.py develop
+
+main_arena_offset堆题
+https://github.com/bash-c/main_arena_offset#shell脚本，直接下载使用即可，用来搜索堆偏移量的https://github.com/zarkivy/py_main_arena_offset#这个是python包装好的，内核还是上面的shell脚本，不过可以在python里面使用
+
+seccomp-tools用来查被禁用的syscall的
+sudo apt install gcc ruby-dev #依赖sudo gem install seccomp-tools
+
+其他常用apt install vimapt install checksec
+
+IDA Prowindows下直接安装即可
+alpha3.git这个软件是用来shellcode字符化的，但是真的他妈的太难用了。
+看这个吧：alpha3.py
+AE64alpha3对32位的shellcode适配性比较高，不过我们可以试试这个AE64来写64位的题目：
+git clone https://github.com/veritas501/ae64.git --depth 1cd ae64sudo python3 setup.py install
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-前提</tag>
+        <tag>计算机原理</tag>
       </tags>
   </entry>
 </search>
