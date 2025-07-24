@@ -2,7 +2,7 @@
 <search>
   <entry>
     <title></title>
-    <url>/undefined/hello-world/</url>
+    <url>//docx/hello-world/</url>
     <content><![CDATA[01 ShellCode什么是shellcodeshellcode通常是软件漏洞利用过程中使用的一小段机器代码
 作用：
 1、启动shell进行交互
@@ -275,7 +275,7 @@ shellcode变型这是最后一种类型的shellcode，和mrctf2020_shellcode类�
   </entry>
   <entry>
     <title>01 shellcode</title>
-    <url>/undefined/01%20ShellCode/</url>
+    <url>//docx/01%20ShellCode/</url>
     <content><![CDATA[什么是shellcodeshellcode通常是软件漏洞利用过程中使用的一小段机器代码
 作用：
 1、启动shell进行交互
