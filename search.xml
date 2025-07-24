@@ -2,7 +2,7 @@
 <search>
   <entry>
     <title></title>
-    <url>/2025/07/24/hello-world/</url>
+    <url>/undefined/hello-world/</url>
     <content><![CDATA[01 ShellCode什么是shellcodeshellcode通常是软件漏洞利用过程中使用的一小段机器代码
 作用：
 1、启动shell进行交互
@@ -275,7 +275,7 @@ shellcode变型这是最后一种类型的shellcode，和mrctf2020_shellcode类�
   </entry>
   <entry>
     <title>01 shellcode</title>
-    <url>/2025/07/24/01%20ShellCode/</url>
+    <url>/undefined/01%20ShellCode/</url>
     <content><![CDATA[什么是shellcodeshellcode通常是软件漏洞利用过程中使用的一小段机器代码
 作用：
 1、启动shell进行交互
@@ -526,5 +526,11 @@ shellcode变型这是最后一种类型的shellcode，和mrctf2020_shellcode类�
 字符集有限制的 shellcode，可以使用 ALPHA3、msf 等工具对 shellcode 进行编码。或者根据限制的字符先生成可用的汇编指令再进行指令等价替换。
 
 ]]></content>
+      <categories>
+        <category>pwn攻略-主线</category>
+      </categories>
+      <tags>
+        <tag>PWN不出来</tag>
+      </tags>
   </entry>
 </search>
